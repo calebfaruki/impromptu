@@ -1,7 +1,7 @@
 {{ define "title" }}Versions: {{ .Author.Username }}/{{ .Prompt.Name }} -- Impromptu{{ end }}
 {{ define "content" }}
 <h1>{{ .Prompt.Name }}</h1>
-<p class="meta">by <a href="/{{ .Author.Username }}/">{{ .Author.Username }}</a></p>
+<p class="meta">by <a href="/{{ .Author.Username }}">{{ .Author.Username }}</a></p>
 
 <h2>Version history</h2>
 {{ if .Versions }}

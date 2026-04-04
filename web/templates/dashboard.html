@@ -6,7 +6,7 @@
 <ul class="prompt-list">
     {{ range .Prompts }}
     <li>
-        <a href="/{{ $.User.Username }}/{{ .Name }}/">{{ .Name }}</a>
+        <a href="/{{ $.User.Username }}/{{ .Name }}">{{ .Name }}</a>
         {{ if .Description }}<br><span class="meta">{{ .Description }}</span>{{ end }}
     </li>
     {{ end }}

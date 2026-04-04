@@ -18,7 +18,7 @@
                 }
                 var html = "<ul>";
                 data.results.forEach(function (r) {
-                    html += "<li><a href=\"/" + r.author + "/" + r.name + "/\">"
+                    html += "<li><a href=\"/" + r.author + "/" + r.name + "\">"
                         + r.author + "/" + r.name + "</a>"
                         + "<br><span class=\"meta\">" + r.description + "</span></li>";
                 });

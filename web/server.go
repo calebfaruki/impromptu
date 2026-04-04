@@ -71,7 +71,10 @@ func (s *Server) Routes() http.Handler {
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(auth.OptionalAuth(s.sessions, s.cookieSigner, s.cookie))
+r.Use(auth.OptionalAuth(s.sessions, s.cookieSigner, s.cookie))
+
+	// Health check (before auth middleware would be ideal, but OptionalAuth is non-blocking)
+	r.Get("/healthz", s.HandleHealthz)
 
 	// Static assets
 	staticSub, _ := fs.Sub(staticFS, "static")

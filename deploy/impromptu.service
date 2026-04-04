@@ -1,0 +1,17 @@
+[Unit]
+Description=Impromptu Prompt Registry
+After=network.target
+
+[Service]
+Type=simple
+User=impromptu
+WorkingDirectory=/app
+ExecStart=/usr/local/bin/impromptu serve
+EnvironmentFile=/etc/impromptu/env
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

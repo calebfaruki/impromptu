@@ -117,6 +117,17 @@ func get(t *testing.T, handler http.Handler, path string) *httptest.ResponseReco
 
 // --- Route tests ---
 
+func TestHealthCheckReturns200(t *testing.T) {
+	srv, _, _ := testServer(t)
+	rec := get(t, srv.Routes(), "/healthz")
+	if rec.Code != http.StatusOK {
+		t.Errorf("got %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "healthy") {
+		t.Error("expected healthy status in response")
+	}
+}
+
 func TestNotFoundReturns404(t *testing.T) {
 	srv, _, _ := testServer(t)
 	rec := get(t, srv.Routes(), "/nonexistent/path/here")

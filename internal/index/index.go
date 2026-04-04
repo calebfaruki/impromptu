@@ -50,12 +50,12 @@ type Version struct {
 
 // SearchResult holds a prompt with its author info from a search query.
 type SearchResult struct {
-	PromptID    int64
-	Name        string
-	Description string
-	Author      string
-	DisplayName string
-	Rank        float64
+	PromptID    int64   `json:"prompt_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Author      string  `json:"author"`
+	DisplayName string  `json:"display_name"`
+	Rank        float64 `json:"rank"`
 }
 
 // Open creates a new database connection with WAL mode and foreign keys enabled.
@@ -84,6 +84,11 @@ func (d *DB) Close() error {
 // that need to share the same database connection (e.g. auth sessions).
 func (d *DB) RawDB() *sql.DB {
 	return d.db
+}
+
+// Ping verifies the database connection is alive.
+func (d *DB) Ping(ctx context.Context) error {
+	return d.db.PingContext(ctx)
 }
 
 // Migrate applies SQL migration files from the given filesystem.
