@@ -53,18 +53,18 @@ func TestOpen(t *testing.T) {
 func TestMigrate(t *testing.T) {
 	d := testDB(t)
 
-	// Verify schema_migrations recorded version 1
-	var version int
-	err := d.db.QueryRow("SELECT version FROM schema_migrations").Scan(&version)
+	// Verify schema_migrations has records
+	var count int
+	err := d.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
 	if err != nil {
 		t.Fatalf("querying schema_migrations: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("got version %d, want 1", version)
+	if count == 0 {
+		t.Error("no migrations recorded")
 	}
 
 	// Verify tables exist by running SELECT on each
-	tables := []string{"authors", "prompts", "versions"}
+	tables := []string{"authors", "prompts", "versions", "sessions"}
 	for _, table := range tables {
 		_, err := d.db.Exec("SELECT 1 FROM " + table + " LIMIT 1")
 		if err != nil {
@@ -85,16 +85,20 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := Migrate(context.Background(), d, migrations); err != nil {
 		t.Fatalf("first migrate: %v", err)
 	}
+
+	var countAfterFirst int
+	d.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&countAfterFirst)
+
 	if err := Migrate(context.Background(), d, migrations); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 
-	var count int
-	err = d.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
+	var countAfterSecond int
+	err = d.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&countAfterSecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Errorf("got %d migration records, want 1", count)
+	if countAfterFirst != countAfterSecond {
+		t.Errorf("migration count changed: %d after first, %d after second", countAfterFirst, countAfterSecond)
 	}
 }

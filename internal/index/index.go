@@ -78,6 +78,12 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+// RawDB returns the underlying *sql.DB for use by other packages
+// that need to share the same database connection (e.g. auth sessions).
+func (d *DB) RawDB() *sql.DB {
+	return d.db
+}
+
 // Migrate applies SQL migration files from the given filesystem.
 // Files must be in a "migrations" subdirectory, named with a numeric prefix (e.g. 001_create_tables.sql).
 func Migrate(ctx context.Context, d *DB, migrations fs.FS) error {
