@@ -156,3 +156,63 @@ func TestLatestVersionNotFound(t *testing.T) {
 		t.Errorf("expected sql.ErrNoRows, got: %v", err)
 	}
 }
+
+func TestFindVersionUnsigned(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+	_, promptID := insertTestPrompt(t, d)
+
+	_, err := d.InsertVersion(ctx, promptID, "1.0.0", "sha256:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := d.FindVersion(ctx, promptID, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SignatureBundle != "" {
+		t.Errorf("expected empty signature_bundle, got %q", v.SignatureBundle)
+	}
+	if v.RekorLogIndex != 0 {
+		t.Errorf("expected rekor_log_index 0, got %d", v.RekorLogIndex)
+	}
+}
+
+func TestSetVersionSignature(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+	_, promptID := insertTestPrompt(t, d)
+
+	versionID, err := d.InsertVersion(ctx, promptID, "1.0.0", "sha256:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bundle := `{"digest":"sha256:abc","identity":"github.com/testuser"}`
+	err = d.SetVersionSignature(ctx, versionID, bundle, 42)
+	if err != nil {
+		t.Fatalf("SetVersionSignature: %v", err)
+	}
+
+	v, err := d.FindVersion(ctx, promptID, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SignatureBundle != bundle {
+		t.Errorf("got bundle %q, want %q", v.SignatureBundle, bundle)
+	}
+	if v.RekorLogIndex != 42 {
+		t.Errorf("got rekor_log_index %d, want 42", v.RekorLogIndex)
+	}
+}
+
+func TestSetVersionSignatureNotFound(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	err := d.SetVersionSignature(ctx, 9999, "bundle", 1)
+	if err == nil {
+		t.Fatal("expected error for nonexistent version, got nil")
+	}
+}

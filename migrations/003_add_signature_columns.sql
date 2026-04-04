@@ -1,0 +1,2 @@
+ALTER TABLE versions ADD COLUMN signature_bundle TEXT NOT NULL DEFAULT '';
+ALTER TABLE versions ADD COLUMN rekor_log_index INTEGER NOT NULL DEFAULT 0;

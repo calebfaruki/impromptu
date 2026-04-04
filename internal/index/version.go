@@ -21,15 +21,34 @@ func (d *DB) InsertVersion(ctx context.Context, promptID int64, version, digest 
 	return id, nil
 }
 
+// SetVersionSignature stores signature metadata on an existing version.
+func (d *DB) SetVersionSignature(ctx context.Context, versionID int64, signatureBundle string, rekorLogIndex int64) error {
+	result, err := d.db.ExecContext(ctx,
+		"UPDATE versions SET signature_bundle = ?, rekor_log_index = ? WHERE id = ?",
+		signatureBundle, rekorLogIndex, versionID)
+	if err != nil {
+		return fmt.Errorf("setting version signature for version %d: %w", versionID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("setting version signature for version %d: %w", versionID, err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("setting version signature for version %d: no matching version", versionID)
+	}
+	return nil
+}
+
 // FindVersion retrieves a specific version by prompt ID and version string.
 // Returns sql.ErrNoRows (wrapped) if not found.
 func (d *DB) FindVersion(ctx context.Context, promptID int64, version string) (Version, error) {
 	var v Version
 	var createdAt string
 	err := d.db.QueryRowContext(ctx,
-		`SELECT id, prompt_id, version, digest, created_at
+		`SELECT id, prompt_id, version, digest, signature_bundle, rekor_log_index, created_at
 		 FROM versions WHERE prompt_id = ? AND version = ?`,
-		promptID, version).Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest, &createdAt)
+		promptID, version).Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest,
+		&v.SignatureBundle, &v.RekorLogIndex, &createdAt)
 	if err != nil {
 		return Version{}, fmt.Errorf("finding version %q for prompt %d: %w", version, promptID, err)
 	}
@@ -43,7 +62,7 @@ func (d *DB) FindVersion(ctx context.Context, promptID int64, version string) (V
 // ListVersions returns all versions for a prompt, newest first.
 func (d *DB) ListVersions(ctx context.Context, promptID int64) ([]Version, error) {
 	rows, err := d.db.QueryContext(ctx,
-		`SELECT id, prompt_id, version, digest, created_at
+		`SELECT id, prompt_id, version, digest, signature_bundle, rekor_log_index, created_at
 		 FROM versions WHERE prompt_id = ? ORDER BY id DESC`,
 		promptID)
 	if err != nil {
@@ -55,7 +74,8 @@ func (d *DB) ListVersions(ctx context.Context, promptID int64) ([]Version, error
 	for rows.Next() {
 		var v Version
 		var createdAt string
-		if err := rows.Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest, &createdAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest,
+			&v.SignatureBundle, &v.RekorLogIndex, &createdAt); err != nil {
 			return nil, fmt.Errorf("scanning version: %w", err)
 		}
 		var parseErr error
@@ -74,9 +94,10 @@ func (d *DB) LatestVersion(ctx context.Context, promptID int64) (Version, error)
 	var v Version
 	var createdAt string
 	err := d.db.QueryRowContext(ctx,
-		`SELECT id, prompt_id, version, digest, created_at
+		`SELECT id, prompt_id, version, digest, signature_bundle, rekor_log_index, created_at
 		 FROM versions WHERE prompt_id = ? ORDER BY id DESC LIMIT 1`,
-		promptID).Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest, &createdAt)
+		promptID).Scan(&v.ID, &v.PromptID, &v.Version, &v.Digest,
+		&v.SignatureBundle, &v.RekorLogIndex, &createdAt)
 	if err != nil {
 		return Version{}, fmt.Errorf("finding latest version for prompt %d: %w", promptID, err)
 	}

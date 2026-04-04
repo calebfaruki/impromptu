@@ -39,11 +39,13 @@ type Prompt struct {
 
 // Version represents a published version of a prompt.
 type Version struct {
-	ID        int64
-	PromptID  int64
-	Version   string
-	Digest    string
-	CreatedAt time.Time
+	ID              int64
+	PromptID        int64
+	Version         string
+	Digest          string
+	SignatureBundle string
+	RekorLogIndex   int64
+	CreatedAt       time.Time
 }
 
 // SearchResult holds a prompt with its author info from a search query.
