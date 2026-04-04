@@ -4,8 +4,8 @@ import "testing"
 
 func TestCheckUnicode(t *testing.T) {
 	tests := []struct {
-		name string
-		content string
+		name      string
+		content   string
 		wantCount int
 	}{
 		{"clean ascii", "Hello world\n", 0},

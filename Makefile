@@ -14,7 +14,7 @@ lint:
 	go vet ./...
 
 muttest:
-	go-mutesting ./internal/contentcheck/...
+	gremlins unleash
 
 check: build
 	./bin/impromptu check $(DIR)
