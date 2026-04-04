@@ -1,0 +1,19 @@
+{{ define "title" }}Publish -- Impromptu{{ end }}
+{{ define "content" }}
+<h1>Publish a prompt</h1>
+<form action="/publish" method="post" enctype="multipart/form-data">
+    <label for="name">Prompt name</label>
+    <input type="text" id="name" name="name" required placeholder="e.g. code-review">
+
+    <label for="description">Description</label>
+    <input type="text" id="description" name="description" placeholder="A short description">
+
+    <label for="version">Version</label>
+    <input type="text" id="version" name="version" required placeholder="e.g. 1.0.0">
+
+    <label for="archive">Upload zip of markdown files</label>
+    <input type="file" id="archive" name="archive" accept=".zip" required>
+
+    <button type="submit">Publish</button>
+</form>
+{{ end }}

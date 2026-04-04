@@ -1,0 +1,11 @@
+{{ define "title" }}Impromptu -- Prompt Registry{{ end }}
+{{ define "content" }}
+<h1>Find verified prompts</h1>
+<form id="search-form" action="/search" method="get">
+    <label for="q">Search prompts by name, description, or author</label>
+    <input type="search" id="q" name="q" placeholder="e.g. code review">
+    <button type="submit">Search</button>
+</form>
+<div id="results"></div>
+<script src="/static/search.js"></script>
+{{ end }}

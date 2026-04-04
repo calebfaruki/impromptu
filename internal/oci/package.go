@@ -109,3 +109,27 @@ func Unpackage(r io.Reader, dir string) error {
 	}
 	return nil
 }
+
+// UnpackageToMap extracts a tar archive into an in-memory map of filename to content.
+func UnpackageToMap(r io.Reader) (map[string]string, error) {
+	tr := tar.NewReader(r)
+	files := make(map[string]string)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading tar entry: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			return nil, fmt.Errorf("unexpected entry type for %s", hdr.Name)
+		}
+		data, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", hdr.Name, err)
+		}
+		files[hdr.Name] = string(data)
+	}
+	return files, nil
+}

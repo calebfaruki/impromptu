@@ -1,0 +1,21 @@
+{{ define "title" }}Search: {{ .Query }} -- Impromptu{{ end }}
+{{ define "content" }}
+<h1>Search results</h1>
+<form action="/search" method="get">
+    <label for="q">Search</label>
+    <input type="search" id="q" name="q" value="{{ .Query }}">
+    <button type="submit">Search</button>
+</form>
+{{ if .Results }}
+<ul class="prompt-list">
+    {{ range .Results }}
+    <li>
+        <a href="/{{ .Author }}/{{ .Name }}/">{{ .Author }}/{{ .Name }}</a>
+        {{ if .Description }}<br><span class="meta">{{ .Description }}</span>{{ end }}
+    </li>
+    {{ end }}
+</ul>
+{{ else }}
+<p>No results found for "{{ .Query }}".</p>
+{{ end }}
+{{ end }}

@@ -1,0 +1,29 @@
+{{ define "layout" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ block "title" . }}Impromptu{{ end }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <header>
+        <nav>
+            <a href="/">Impromptu</a>
+            {{ if .User }}
+                <a href="/dashboard/prompts">Dashboard</a>
+                <a href="/logout">Log out</a>
+            {{ else }}
+                <a href="/login">Log in with GitHub</a>
+            {{ end }}
+        </nav>
+    </header>
+    <main id="main">
+        {{ block "content" . }}{{ end }}
+    </main>
+    <footer>
+        <p>Impromptu -- secure prompt distribution</p>
+    </footer>
+</body>
+</html>{{ end }}

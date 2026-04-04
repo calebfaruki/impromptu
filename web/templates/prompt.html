@@ -1,0 +1,23 @@
+{{ define "title" }}{{ .Author.Username }}/{{ .Prompt.Name }} -- Impromptu{{ end }}
+{{ define "content" }}
+<h1>{{ .Prompt.Name }}</h1>
+<p class="meta">by <a href="/{{ .Author.Username }}/">{{ .Author.Username }}</a></p>
+{{ if .Prompt.Description }}<p>{{ .Prompt.Description }}</p>{{ end }}
+
+{{ if .Version }}
+<h2>Version {{ .Version.Version }}</h2>
+<p class="meta">
+    Digest: <code>{{ .Version.Digest }}</code><br>
+    <a href="/{{ .Author.Username }}/{{ .Prompt.Name }}/versions">All versions</a>
+    {{ if .Version.Digest }}| <a href="/api/v1/blobs/{{ .Version.Digest }}">Download</a>{{ end }}
+</p>
+{{ end }}
+
+{{ if .Files }}
+<h2>Content</h2>
+{{ range $name, $content := .Files }}
+<h3>{{ $name }}</h3>
+<pre>{{ $content }}</pre>
+{{ end }}
+{{ end }}
+{{ end }}
