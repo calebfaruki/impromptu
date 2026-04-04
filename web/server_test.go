@@ -1,7 +1,11 @@
 package web
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +17,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/oci"
 	"github.com/calebfaruki/impromptu/internal/registry"
+	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 func testServer(t *testing.T) (*Server, *index.DB, *registry.MemoryStore) {
@@ -47,7 +52,8 @@ func testServer(t *testing.T) (*Server, *index.DB, *registry.MemoryStore) {
 		},
 	}
 
-	srv := NewServer(db, blobs, ah, sessions, signer, "session")
+	artSigner := &sigstore.FakeSigner{}
+	srv := NewServer(db, blobs, artSigner, ah, sessions, signer, "session")
 	return srv, db, blobs
 }
 
@@ -96,7 +102,7 @@ func authenticatedRequest(t *testing.T, srv *Server, db *index.DB, method, path 
 	req := httptest.NewRequest(method, path, nil)
 	req.AddCookie(&http.Cookie{
 		Name:  "session",
-		Value: srv.signer.Sign(session.Token),
+		Value: srv.cookieSigner.Sign(session.Token),
 	})
 	return req
 }
@@ -407,5 +413,195 @@ func TestAllPagesHaveSemanticMarkup(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- Publish flow tests ---
+
+func createTestZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.Write([]byte(content))
+	}
+	zw.Close()
+	return buf.Bytes()
+}
+
+func publishRequest(t *testing.T, srv *Server, db *index.DB, name, version string, zipData []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	mw.WriteField("name", name)
+	mw.WriteField("description", "test prompt")
+	mw.WriteField("version", version)
+
+	fw, err := mw.CreateFormFile("archive", "prompt.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fw.Write(zipData)
+	mw.Close()
+
+	req := authenticatedRequest(t, srv, db, "POST", "/publish")
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Body = io.NopCloser(&body)
+
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestPublishValidZip(t *testing.T) {
+	srv, db, blobs := testServer(t)
+	zipData := createTestZip(t, map[string]string{
+		"01-context.md":      "# Context\n\nSome instructions.\n",
+		"02-instructions.md": "# Instructions\n\nMore text.\n",
+	})
+
+	rec := publishRequest(t, srv, db, "my-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("got %d, want 303; body: %s", rec.Code, rec.Body.String())
+	}
+
+	ctx := context.Background()
+	author, err := db.FindAuthor(ctx, "authuser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt, err := db.FindPromptByAuthorName(ctx, author.ID, "my-prompt")
+	if err != nil {
+		t.Fatalf("prompt not in index: %v", err)
+	}
+
+	v, err := db.LatestVersion(ctx, prompt.ID)
+	if err != nil {
+		t.Fatalf("version not in index: %v", err)
+	}
+	if v.Version != "1.0.0" {
+		t.Errorf("got version %q, want 1.0.0", v.Version)
+	}
+
+	exists, err := blobs.Exists(ctx, oci.Digest(v.Digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Error("blob not in store")
+	}
+	if v.SignatureBundle == "" {
+		t.Error("expected signature bundle to be set")
+	}
+}
+
+func TestPublishZeroWidthUnicode(t *testing.T) {
+	srv, db, _ := testServer(t)
+	zipData := createTestZip(t, map[string]string{
+		"01-context.md": "# Prompt\n\nHidden\u200Bcharacter.\n",
+	})
+
+	rec := publishRequest(t, srv, db, "bad-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "unicode") {
+		t.Error("error should mention unicode violation")
+	}
+}
+
+func TestPublishRawHTML(t *testing.T) {
+	srv, db, _ := testServer(t)
+	zipData := createTestZip(t, map[string]string{
+		"01-context.md": "# Prompt\n\n<div>hidden</div>\n",
+	})
+
+	rec := publishRequest(t, srv, db, "html-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+}
+
+func TestPublishNonMdFile(t *testing.T) {
+	srv, db, _ := testServer(t)
+	zipData := createTestZip(t, map[string]string{
+		"01-context.md": "# Valid\n",
+		"helper.py":     "print('hello')\n",
+	})
+
+	rec := publishRequest(t, srv, db, "mixed-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+}
+
+func TestPublishEmptyZip(t *testing.T) {
+	srv, db, _ := testServer(t)
+	zipData := createTestZip(t, map[string]string{})
+
+	rec := publishRequest(t, srv, db, "empty-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+}
+
+func TestPublishDuplicateVersion(t *testing.T) {
+	srv, db, _ := testServer(t)
+	zipData := createTestZip(t, map[string]string{
+		"01-context.md": "# Context\n\nFirst version.\n",
+	})
+
+	rec := publishRequest(t, srv, db, "dup-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("first publish: got %d, want 303", rec.Code)
+	}
+
+	rec = publishRequest(t, srv, db, "dup-prompt", "1.0.0", zipData)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("duplicate: got %d, want 409", rec.Code)
+	}
+}
+
+func TestPublishRoundTrip(t *testing.T) {
+	srv, db, blobs := testServer(t)
+
+	original := map[string]string{
+		"01-context.md": "# Round Trip Test\n\nOriginal content.\n",
+	}
+	zipData := createTestZip(t, original)
+
+	rec := publishRequest(t, srv, db, "roundtrip", "1.0.0", zipData)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("publish: got %d, want 303", rec.Code)
+	}
+
+	ctx := context.Background()
+	author, _ := db.FindAuthor(ctx, "authuser")
+	prompt, _ := db.FindPromptByAuthorName(ctx, author.ID, "roundtrip")
+	v, _ := db.LatestVersion(ctx, prompt.ID)
+
+	blobData, err := blobs.Get(ctx, oci.Digest(v.Digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := oci.UnpackageToMap(bytes.NewReader(blobData))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, want := range original {
+		got, ok := files[name]
+		if !ok {
+			t.Errorf("missing file %s in downloaded blob", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("file %s: content mismatch", name)
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/auth"
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/registry"
+	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 //go:embed templates/*.html
@@ -22,17 +23,18 @@ var staticFS embed.FS
 
 // Server holds dependencies for all HTTP handlers.
 type Server struct {
-	db       *index.DB
-	blobs    registry.BlobStore
-	authH    *auth.Handlers
-	sessions *auth.SessionStore
-	signer   *auth.CookieSigner
-	cookie   string
-	pages    map[string]*template.Template
+	db           *index.DB
+	blobs        registry.BlobStore
+	artSigner    sigstore.Signer
+	authH        *auth.Handlers
+	sessions     *auth.SessionStore
+	cookieSigner *auth.CookieSigner
+	cookie       string
+	pages        map[string]*template.Template
 }
 
 // NewServer creates a web server with all dependencies wired.
-func NewServer(db *index.DB, blobs registry.BlobStore, ah *auth.Handlers, sessions *auth.SessionStore, signer *auth.CookieSigner, cookieName string) *Server {
+func NewServer(db *index.DB, blobs registry.BlobStore, artSigner sigstore.Signer, ah *auth.Handlers, sessions *auth.SessionStore, cookieSigner *auth.CookieSigner, cookieName string) *Server {
 	layout := template.Must(
 		template.New("layout").ParseFS(templateFS, "templates/layout.html"),
 	)
@@ -52,13 +54,14 @@ func NewServer(db *index.DB, blobs registry.BlobStore, ah *auth.Handlers, sessio
 	}
 
 	return &Server{
-		db:       db,
-		blobs:    blobs,
-		authH:    ah,
-		sessions: sessions,
-		signer:   signer,
-		cookie:   cookieName,
-		pages:    pages,
+		db:           db,
+		blobs:        blobs,
+		artSigner:    artSigner,
+		authH:        ah,
+		sessions:     sessions,
+		cookieSigner: cookieSigner,
+		cookie:       cookieName,
+		pages:        pages,
 	}
 }
 
@@ -68,7 +71,7 @@ func (s *Server) Routes() http.Handler {
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(auth.OptionalAuth(s.sessions, s.signer, s.cookie))
+	r.Use(auth.OptionalAuth(s.sessions, s.cookieSigner, s.cookie))
 
 	// Static assets
 	staticSub, _ := fs.Sub(staticFS, "static")
@@ -87,7 +90,7 @@ func (s *Server) Routes() http.Handler {
 
 	// Authenticated
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth(s.sessions, s.signer, s.cookie))
+		r.Use(auth.RequireAuth(s.sessions, s.cookieSigner, s.cookie))
 		r.Get("/dashboard/prompts", s.HandleDashboard)
 		r.Get("/dashboard/settings", s.HandleDashboardSettings)
 		r.Get("/publish", s.HandlePublishForm)

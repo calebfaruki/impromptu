@@ -1,6 +1,7 @@
 {{ define "title" }}Publish -- Impromptu{{ end }}
 {{ define "content" }}
 <h1>Publish a prompt</h1>
+{{ if .Error }}<p style="color: #d4351c"><strong>Error:</strong> {{ .Error }}</p>{{ end }}
 <form action="/publish" method="post" enctype="multipart/form-data">
     <label for="name">Prompt name</label>
     <input type="text" id="name" name="name" required placeholder="e.g. code-review">

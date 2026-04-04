@@ -10,6 +10,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/registry"
+	"github.com/calebfaruki/impromptu/internal/sigstore"
 	"github.com/calebfaruki/impromptu/web"
 )
 
@@ -98,7 +99,8 @@ func runServe() {
 		},
 	}
 
-	srv := web.NewServer(db, blobs, ah, sessions, signer, "session")
+	artSigner := &sigstore.FakeSigner{}
+	srv := web.NewServer(db, blobs, artSigner, ah, sessions, signer, "session")
 
 	fmt.Printf("listening on %s\n", addr)
 	if err := http.ListenAndServe(addr, srv.Routes()); err != nil {
