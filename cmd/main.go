@@ -15,6 +15,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/commands"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
+	"github.com/calebfaruki/impromptu/internal/publish"
 	"github.com/calebfaruki/impromptu/internal/pull"
 	"github.com/calebfaruki/impromptu/internal/registry"
 	"github.com/calebfaruki/impromptu/internal/sigstore"
@@ -47,6 +48,8 @@ func main() {
 		runUpdate()
 	case "remove":
 		runRemove()
+	case "publish":
+		runPublish()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -354,6 +357,62 @@ func runRemove() {
 		os.Exit(1)
 	}
 	fmt.Printf("Removed %s.\n", alias)
+}
+
+func runPublish() {
+	dir, _ := os.Getwd()
+	var name, description, version, token string
+
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 < len(args) {
+				i++
+				name = args[i]
+			}
+		case "--description":
+			if i+1 < len(args) {
+				i++
+				description = args[i]
+			}
+		case "--version":
+			if i+1 < len(args) {
+				i++
+				version = args[i]
+			}
+		case "--token":
+			if i+1 < len(args) {
+				i++
+				token = args[i]
+			}
+		}
+	}
+
+	if name == "" || version == "" {
+		fmt.Fprintf(os.Stderr, "usage: impromptu publish --name <name> --version <version> [--description <desc>] [--token <token>]\n")
+		os.Exit(1)
+	}
+
+	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+
+	result, err := publish.Publish(context.Background(), publish.PublishConfig{
+		Dir:         dir,
+		Name:        name,
+		Description: description,
+		Version:     version,
+		RegistryURL: registryURL,
+		Token:       token,
+		Signer:      &sigstore.FakeSigner{},
+		Identity:    "github.com/cli-user",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Published %s@%s\n", result.Name, result.Version)
+	fmt.Printf("Digest: %s\n", result.Digest)
 }
 
 func fatal(format string, args ...any) {
