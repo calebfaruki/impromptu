@@ -16,13 +16,10 @@ func Parse(data []byte) (*Promptfile, error) {
 		Prompts map[string]any `toml:"prompts"`
 	}
 
-	md, err := toml.Decode(string(data), &raw)
+	_, err := toml.Decode(string(data), &raw)
 	if err != nil {
 		return nil, fmt.Errorf("parsing Promptfile: %w", err)
 	}
-
-	// Check for duplicate keys via undecoded keys (TOML lib handles this)
-	_ = md
 
 	if raw.Version != 1 {
 		return nil, fmt.Errorf("unsupported Promptfile version %d (expected 1)", raw.Version)
@@ -47,7 +44,7 @@ func Parse(data []byte) (*Promptfile, error) {
 func parseEntry(entry any) (Source, error) {
 	switch v := entry.(type) {
 	case string:
-		if _, _, _, err := parseRef(v); err != nil {
+		if _, _, _, err := ParseRef(v); err != nil {
 			return Source{}, err
 		}
 		return Source{Kind: SourceRegistry, Ref: v}, nil
@@ -126,7 +123,7 @@ func (pf *Promptfile) AddEntry(name, ref string) error {
 	if _, exists := pf.Prompts[name]; exists {
 		return fmt.Errorf("prompt %q already exists", name)
 	}
-	if _, _, _, err := parseRef(ref); err != nil {
+	if _, _, _, err := ParseRef(ref); err != nil {
 		return err
 	}
 	pf.Prompts[name] = Source{Kind: SourceRegistry, Ref: ref}

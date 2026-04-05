@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// parseRef parses "author/name@version" into its parts and validates the version.
-func parseRef(ref string) (author, name, version string, err error) {
+// ParseRef parses "author/name@version" into its parts and validates the version.
+func ParseRef(ref string) (author, name, version string, err error) {
 	atIdx := strings.LastIndex(ref, "@")
 	if atIdx < 0 {
 		return "", "", "", fmt.Errorf("ref %q missing @version", ref)
@@ -39,7 +39,7 @@ func parseSource(raw map[string]any) (Source, error) {
 	}
 
 	if ref, ok := raw["ref"].(string); ok {
-		if _, _, _, err := parseRef(ref); err != nil {
+		if _, _, _, err := ParseRef(ref); err != nil {
 			return Source{}, err
 		}
 		return Source{Kind: SourceRegistry, Ref: ref}, nil
@@ -118,7 +118,7 @@ func parsePrivateSource(regURL string, raw map[string]any) (Source, error) {
 	if !ok || ref == "" {
 		return Source{}, fmt.Errorf("private registry source must have ref")
 	}
-	if _, _, _, err := parseRef(ref); err != nil {
+	if _, _, _, err := ParseRef(ref); err != nil {
 		return Source{}, err
 	}
 	return Source{Kind: SourcePrivate, Registry: regURL, Ref: ref}, nil

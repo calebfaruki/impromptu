@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/calebfaruki/impromptu/internal/auth"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
+	"github.com/calebfaruki/impromptu/internal/pull"
 	"github.com/calebfaruki/impromptu/internal/registry"
 	"github.com/calebfaruki/impromptu/internal/sigstore"
 	"github.com/calebfaruki/impromptu/web"
@@ -34,6 +36,8 @@ func main() {
 	case "serve":
 		dev := len(os.Args) > 2 && os.Args[2] == "--dev"
 		runServe(dev)
+	case "pull":
+		runPull()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -181,6 +185,73 @@ func requireEnv(key string) string {
 		fatal("required environment variable %s is not set", key)
 	}
 	return v
+}
+
+func runPull() {
+	dir, _ := os.Getwd()
+	force := false
+	yes := false
+	var inlineRef, alias string
+
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--force":
+			force = true
+		case "--yes":
+			yes = true
+		case "--as":
+			if i+1 < len(args) {
+				i++
+				alias = args[i]
+			}
+		default:
+			if !strings.HasPrefix(args[i], "-") {
+				inlineRef = args[i]
+			}
+		}
+	}
+
+	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+	cfg := pull.Config{
+		Dir:         dir,
+		Force:       force,
+		Yes:         yes,
+		RegistryURL: registryURL,
+		Verifier:    &sigstore.FakeVerifier{},
+		Confirm: func(summary string) bool {
+			fmt.Print(summary)
+			fmt.Print("Continue? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			return strings.ToLower(answer) == "y" || strings.ToLower(answer) == "yes"
+		},
+	}
+
+	var result *pull.Result
+	var err error
+	if inlineRef != "" {
+		result, err = pull.InlinePull(context.Background(), cfg, inlineRef, alias)
+	} else {
+		result, err = pull.Pull(context.Background(), cfg)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, w := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
+	if len(result.Added) > 0 {
+		fmt.Printf("Added: %s\n", strings.Join(result.Added, ", "))
+	}
+	if len(result.Removed) > 0 {
+		fmt.Printf("Removed: %s\n", strings.Join(result.Removed, ", "))
+	}
+	if len(result.Added) == 0 && len(result.Removed) == 0 {
+		fmt.Println("Everything up to date.")
+	}
 }
 
 func fatal(format string, args ...any) {

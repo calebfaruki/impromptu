@@ -10,7 +10,7 @@ import (
 // Results are ranked by BM25 with name weighted 10x, author 5x, description 1x.
 func (d *DB) SearchPrompts(ctx context.Context, query string, limit, offset int) ([]SearchResult, error) {
 	if query == "" {
-		return nil, nil
+		return []SearchResult{}, nil
 	}
 	if limit <= 0 {
 		limit = 20
@@ -18,7 +18,7 @@ func (d *DB) SearchPrompts(ctx context.Context, query string, limit, offset int)
 
 	sanitized := sanitizeQuery(query)
 	if sanitized == "" {
-		return nil, nil
+		return []SearchResult{}, nil
 	}
 
 	rows, err := d.db.QueryContext(ctx, `

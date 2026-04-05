@@ -3,8 +3,6 @@ package web
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/calebfaruki/impromptu/internal/index"
 )
 
 // HandleSearch renders the HTML search results page.
@@ -24,9 +22,6 @@ func (s *Server) HandleSearchAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "search error", http.StatusInternalServerError)
 		return
-	}
-	if results == nil {
-		results = make([]index.SearchResult, 0)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"results": results})
