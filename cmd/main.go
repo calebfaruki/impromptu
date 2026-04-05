@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/calebfaruki/impromptu/internal/auth"
+	"github.com/calebfaruki/impromptu/internal/commands"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/pull"
@@ -38,6 +39,14 @@ func main() {
 		runServe(dev)
 	case "pull":
 		runPull()
+	case "init":
+		runInit()
+	case "search":
+		runSearch()
+	case "update":
+		runUpdate()
+	case "remove":
+		runRemove()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -252,6 +261,99 @@ func runPull() {
 	if len(result.Added) == 0 && len(result.Removed) == 0 {
 		fmt.Println("Everything up to date.")
 	}
+}
+
+func runInit() {
+	dir, _ := os.Getwd()
+	if err := commands.Init(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Promptfile created.")
+}
+
+func runSearch() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "usage: impromptu search <query>\n")
+		os.Exit(1)
+	}
+	query := strings.Join(os.Args[2:], " ")
+	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+
+	results, err := commands.Search(context.Background(), registryURL, query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(results) == 0 {
+		fmt.Println("No results found.")
+		return
+	}
+	for _, r := range results {
+		fmt.Printf("  %s/%s  %s\n", r.Author, r.Name, r.Description)
+	}
+}
+
+func runUpdate() {
+	dir, _ := os.Getwd()
+	force := false
+	yes := false
+	var names []string
+
+	for _, arg := range os.Args[2:] {
+		switch arg {
+		case "--force":
+			force = true
+		case "--yes":
+			yes = true
+		default:
+			if !strings.HasPrefix(arg, "-") {
+				names = append(names, arg)
+			}
+		}
+	}
+
+	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+	cfg := pull.Config{
+		Dir: dir, Force: force, Yes: yes, RegistryURL: registryURL,
+		Verifier: &sigstore.FakeVerifier{},
+		Confirm: func(summary string) bool {
+			fmt.Print(summary)
+			fmt.Print("Continue? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			return strings.ToLower(answer) == "y"
+		},
+	}
+
+	result, err := commands.Update(context.Background(), cfg, &sigstore.FakeVerifier{}, names...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	for _, w := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
+	if len(result.Added) > 0 {
+		fmt.Printf("Updated: %s\n", strings.Join(result.Added, ", "))
+	} else {
+		fmt.Println("Everything up to date.")
+	}
+}
+
+func runRemove() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "usage: impromptu remove <alias>\n")
+		os.Exit(1)
+	}
+	dir, _ := os.Getwd()
+	alias := os.Args[2]
+
+	if err := commands.Remove(dir, alias); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Removed %s.\n", alias)
 }
 
 func fatal(format string, args ...any) {
