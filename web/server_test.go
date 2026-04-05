@@ -362,6 +362,62 @@ func TestBlobDownloadReturns200(t *testing.T) {
 	}
 }
 
+func TestPromptAPIReturnsJSON(t *testing.T) {
+	srv, db, blobs := testServer(t)
+	seedData(t, db, blobs)
+	rec := get(t, srv.Routes(), "/api/v1/prompts/alice/code-review")
+	if rec.Code != http.StatusOK {
+		t.Errorf("got %d, want 200", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("got content-type %q", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "code-review") {
+		t.Error("response should contain prompt name")
+	}
+	if !strings.Contains(body, "alice") {
+		t.Error("response should contain author")
+	}
+}
+
+func TestPromptAPINotFound(t *testing.T) {
+	srv, _, _ := testServer(t)
+	rec := get(t, srv.Routes(), "/api/v1/prompts/nobody/nothing")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", rec.Code)
+	}
+}
+
+func TestVersionsAPIReturnsJSON(t *testing.T) {
+	srv, db, blobs := testServer(t)
+	seedData(t, db, blobs)
+	rec := get(t, srv.Routes(), "/api/v1/prompts/alice/code-review/versions")
+	if rec.Code != http.StatusOK {
+		t.Errorf("got %d, want 200", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("got content-type %q", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "1.0.0") {
+		t.Error("response should contain version 1.0.0")
+	}
+	if !strings.Contains(body, "sha256:") {
+		t.Error("response should contain digest")
+	}
+}
+
+func TestVersionsAPINotFound(t *testing.T) {
+	srv, _, _ := testServer(t)
+	rec := get(t, srv.Routes(), "/api/v1/prompts/nobody/nothing/versions")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", rec.Code)
+	}
+}
+
 func TestBlobDownloadNotFound(t *testing.T) {
 	srv, _, _ := testServer(t)
 	rec := get(t, srv.Routes(), "/api/v1/blobs/sha256:0000000000000000000000000000000000000000000000000000000000000000")

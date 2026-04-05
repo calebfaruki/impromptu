@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -119,4 +120,95 @@ func (s *Server) fetchContent(r *http.Request, digest string) map[string]string 
 		return nil
 	}
 	return files
+}
+
+// HandlePromptAPI returns prompt metadata and latest version as JSON.
+func (s *Server) HandlePromptAPI(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "author")
+	name := chi.URLParam(r, "name")
+
+	author, err := s.db.FindAuthor(r.Context(), username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "author not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	prompt, err := s.db.FindPromptByAuthorName(r.Context(), author.ID, name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "prompt not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"id":          prompt.ID,
+		"name":        prompt.Name,
+		"description": prompt.Description,
+		"author":      author.Username,
+	})
+}
+
+// HandleVersionsAPI returns all versions for a prompt as JSON.
+func (s *Server) HandleVersionsAPI(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "author")
+	name := chi.URLParam(r, "name")
+
+	author, err := s.db.FindAuthor(r.Context(), username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "author not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	prompt, err := s.db.FindPromptByAuthorName(r.Context(), author.ID, name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "prompt not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	versions, err := s.db.ListVersions(r.Context(), prompt.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	type versionJSON struct {
+		Version         string `json:"version"`
+		Digest          string `json:"digest"`
+		SignatureBundle string `json:"signature_bundle"`
+		RekorLogIndex   int64  `json:"rekor_log_index"`
+		CreatedAt       string `json:"created_at"`
+	}
+
+	var out []versionJSON
+	for _, v := range versions {
+		out = append(out, versionJSON{
+			Version:         v.Version,
+			Digest:          v.Digest,
+			SignatureBundle: v.SignatureBundle,
+			RekorLogIndex:   v.RekorLogIndex,
+			CreatedAt:       v.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	if out == nil {
+		out = []versionJSON{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"versions": out})
 }

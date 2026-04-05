@@ -90,6 +90,8 @@ func (s *Server) Routes() http.Handler {
 	// API
 	r.Get("/api/v1/search", s.HandleSearchAPI)
 	r.Get("/api/v1/blobs/{digest}", s.HandleBlobDownload)
+	r.Get("/api/v1/prompts/{author}/{name}", s.HandlePromptAPI)
+	r.Get("/api/v1/prompts/{author}/{name}/versions", s.HandleVersionsAPI)
 
 	// Authenticated
 	r.Group(func(r chi.Router) {
