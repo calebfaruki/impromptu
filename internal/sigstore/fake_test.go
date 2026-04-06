@@ -5,23 +5,24 @@ import (
 	"testing"
 )
 
-func TestFakeSignerIncrementsIndex(t *testing.T) {
-	signer := &FakeSigner{}
-	ctx := context.Background()
+func TestFakeVerifierMultipleEntries(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 1, Digest: "sha256:aaa", SignerIdentity: "alice@github.com"})
+	v.AddEntry(RekorEntry{LogIndex: 2, Digest: "sha256:bbb", SignerIdentity: "bob@github.com"})
 
-	b1, err := signer.Sign(ctx, "sha256:aaa", "github.com/alice")
+	e1, err := v.Verify(context.Background(), 1, "sha256:aaa")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b2, err := signer.Sign(ctx, "sha256:bbb", "github.com/alice")
+	if e1.SignerIdentity != "alice@github.com" {
+		t.Errorf("entry 1: got %q", e1.SignerIdentity)
+	}
+
+	e2, err := v.Verify(context.Background(), 2, "sha256:bbb")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if b1.RekorLogIndex != 0 {
-		t.Errorf("first index: got %d, want 0", b1.RekorLogIndex)
-	}
-	if b2.RekorLogIndex != 1 {
-		t.Errorf("second index: got %d, want 1", b2.RekorLogIndex)
+	if e2.SignerIdentity != "bob@github.com" {
+		t.Errorf("entry 2: got %q", e2.SignerIdentity)
 	}
 }

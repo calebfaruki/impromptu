@@ -13,7 +13,6 @@ import (
 
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/oci"
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 // PublishConfig holds the dependencies and parameters for a publish operation.
@@ -24,7 +23,6 @@ type PublishConfig struct {
 	Version     string
 	RegistryURL string
 	Token       string
-	Signer      sigstore.Signer
 	Identity    string
 }
 
@@ -80,14 +78,8 @@ func Publish(ctx context.Context, cfg PublishConfig) (*PublishResult, error) {
 	}
 	digest := oci.ComputeDigest(tarData)
 
-	// Sign
-	bundle, err := cfg.Signer.Sign(ctx, digest.String(), cfg.Identity)
-	if err != nil {
-		return nil, fmt.Errorf("signing: %w", err)
-	}
-
-	// Push to registry
-	if err := pushToRegistry(ctx, cfg, tarData, digest.String(), bundle); err != nil {
+	// Push to registry (signing removed in v3 -- publish will be removed entirely)
+	if err := pushToRegistry(ctx, cfg, tarData, digest.String()); err != nil {
 		return nil, fmt.Errorf("pushing to registry: %w", err)
 	}
 
@@ -98,14 +90,12 @@ func Publish(ctx context.Context, cfg PublishConfig) (*PublishResult, error) {
 	}, nil
 }
 
-func pushToRegistry(ctx context.Context, cfg PublishConfig, tarData []byte, digest string, bundle sigstore.SignatureBundle) error {
+func pushToRegistry(ctx context.Context, cfg PublishConfig, tarData []byte, digest string) error {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	mw.WriteField("name", cfg.Name)
 	mw.WriteField("description", cfg.Description)
 	mw.WriteField("version", cfg.Version)
-	mw.WriteField("signature_bundle", string(bundle.BundleJSON))
-	mw.WriteField("rekor_log_index", fmt.Sprintf("%d", bundle.RekorLogIndex))
 
 	fw, err := mw.CreateFormFile("archive", "prompt.tar")
 	if err != nil {

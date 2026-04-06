@@ -6,111 +6,80 @@ import (
 	"testing"
 )
 
-func TestSignAndVerify(t *testing.T) {
-	signer := &FakeSigner{}
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
+func TestVerifyValidEntry(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 42, Digest: "sha256:abc123", SignerIdentity: "alice@github.com"})
 
-	bundle, err := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-	if err != nil {
-		t.Fatalf("Sign: %v", err)
-	}
-	if len(bundle.BundleJSON) == 0 {
-		t.Fatal("empty bundle")
-	}
-	if bundle.SignerIdentity != "github.com/alice" {
-		t.Errorf("identity: got %q, want %q", bundle.SignerIdentity, "github.com/alice")
-	}
-
-	err = verifier.Verify(ctx, bundle.BundleJSON, "sha256:abc123", "github.com/alice")
+	entry, err := v.Verify(context.Background(), 42, "sha256:abc123")
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-}
-
-func TestVerifyWrongDigest(t *testing.T) {
-	signer := &FakeSigner{}
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
-
-	bundle, _ := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-
-	err := verifier.Verify(ctx, bundle.BundleJSON, "sha256:wrong", "github.com/alice")
-	if err == nil {
-		t.Fatal("expected error for wrong digest, got nil")
+	if entry.SignerIdentity != "alice@github.com" {
+		t.Errorf("identity: got %q", entry.SignerIdentity)
+	}
+	if entry.Digest != "sha256:abc123" {
+		t.Errorf("digest: got %q", entry.Digest)
 	}
 }
 
-func TestVerifyWrongIdentity(t *testing.T) {
-	signer := &FakeSigner{}
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
+func TestVerifyDigestMismatch(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 42, Digest: "sha256:correct", SignerIdentity: "alice@github.com"})
 
-	bundle, _ := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-
-	err := verifier.Verify(ctx, bundle.BundleJSON, "sha256:abc123", "github.com/bob")
+	_, err := v.Verify(context.Background(), 42, "sha256:wrong")
 	if err == nil {
-		t.Fatal("expected error for wrong identity, got nil")
+		t.Fatal("expected error for digest mismatch")
 	}
 }
 
-func TestVerifyTamperedBundle(t *testing.T) {
-	signer := &FakeSigner{}
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
+func TestVerifyInvalidLogIndex(t *testing.T) {
+	v := NewFakeVerifier()
 
-	bundle, _ := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-
-	tampered := make([]byte, len(bundle.BundleJSON))
-	copy(tampered, bundle.BundleJSON)
-	// Flip a byte in the middle to corrupt the JSON values
-	tampered[len(tampered)/2] ^= 0xFF
-
-	err := verifier.Verify(ctx, tampered, "sha256:abc123", "github.com/alice")
+	_, err := v.Verify(context.Background(), 999, "sha256:abc")
 	if err == nil {
-		t.Fatal("expected error for tampered bundle, got nil")
+		t.Fatal("expected error for invalid log index")
 	}
 }
 
-func TestVerifyEmptyBundle(t *testing.T) {
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
+func TestVerifyReturnsIdentity(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 1, Digest: "sha256:abc", SignerIdentity: "alice@github.com"})
 
-	err := verifier.Verify(ctx, []byte{}, "sha256:abc123", "github.com/alice")
-	if err == nil {
-		t.Fatal("expected error for empty bundle, got nil")
+	entry, err := v.Verify(context.Background(), 1, "sha256:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.SignerIdentity != "alice@github.com" {
+		t.Errorf("got %q", entry.SignerIdentity)
 	}
 }
 
-func TestVerifyMalformedJSON(t *testing.T) {
-	verifier := &FakeVerifier{}
-	ctx := context.Background()
+func TestVerifyGitHubOIDCIdentity(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 10, Digest: "sha256:abc", SignerIdentity: "alice@users.noreply.github.com"})
 
-	err := verifier.Verify(ctx, []byte("not json"), "sha256:abc123", "github.com/alice")
-	if err == nil {
-		t.Fatal("expected error for malformed JSON, got nil")
+	entry, _ := v.Verify(context.Background(), 10, "sha256:abc")
+	if entry.SignerIdentity != "alice@users.noreply.github.com" {
+		t.Errorf("got %q", entry.SignerIdentity)
 	}
 }
 
-func TestSignerError(t *testing.T) {
-	signer := &FakeSigner{Err: errors.New("signing failed")}
-	ctx := context.Background()
+func TestVerifyCodebergOIDCIdentity(t *testing.T) {
+	v := NewFakeVerifier()
+	v.AddEntry(RekorEntry{LogIndex: 20, Digest: "sha256:abc", SignerIdentity: "alice@codeberg.org"})
 
-	_, err := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	entry, _ := v.Verify(context.Background(), 20, "sha256:abc")
+	if entry.SignerIdentity != "alice@codeberg.org" {
+		t.Errorf("got %q", entry.SignerIdentity)
 	}
 }
 
-func TestVerifierError(t *testing.T) {
-	signer := &FakeSigner{}
-	verifier := &FakeVerifier{Err: errors.New("verify failed")}
-	ctx := context.Background()
+func TestVerifyConfiguredError(t *testing.T) {
+	v := NewFakeVerifier()
+	v.Err = errors.New("rekor unavailable")
 
-	bundle, _ := signer.Sign(ctx, "sha256:abc123", "github.com/alice")
-
-	err := verifier.Verify(ctx, bundle.BundleJSON, "sha256:abc123", "github.com/alice")
+	_, err := v.Verify(context.Background(), 1, "sha256:abc")
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("expected configured error")
 	}
 }

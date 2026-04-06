@@ -87,21 +87,21 @@ func (r *RegistryClient) Resolve(ctx context.Context, ref string, force bool) (*
 	}
 
 	// Signature verification (unsigned artifacts fail by default)
-	identity := "github.com/" + author
-	if matched.SignatureBundle == "" {
+	if matched.RekorLogIndex == 0 {
 		if !force {
-			return nil, fmt.Errorf("%s is unsigned: no signature bundle", ref)
+			return nil, fmt.Errorf("%s is unsigned: no Rekor log entry", ref)
 		}
 		result.Warnings = append(result.Warnings, "artifact is unsigned")
 	} else {
-		err := r.verifier.Verify(ctx, []byte(matched.SignatureBundle), matched.Digest, identity)
+		entry, err := r.verifier.Verify(ctx, matched.RekorLogIndex, matched.Digest)
 		if err != nil {
 			if !force {
 				return nil, fmt.Errorf("signature verification failed for %s: %w", ref, err)
 			}
 			result.Warnings = append(result.Warnings, fmt.Sprintf("signature verification failed: %v", err))
+		} else {
+			result.Entry.Signer = entry.SignerIdentity
 		}
-		result.Entry.Signer = identity
 	}
 
 	// Cooldown check

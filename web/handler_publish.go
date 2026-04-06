@@ -103,7 +103,7 @@ func (s *Server) HandlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert version (fails fast if duplicate)
-	versionID, err := s.db.InsertVersion(ctx, promptID, version, digest.String())
+	_, err = s.db.InsertVersion(ctx, promptID, version, digest.String())
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			s.publishError(w, r, http.StatusConflict, fmt.Sprintf("version %s already exists", version))
@@ -117,13 +117,6 @@ func (s *Server) HandlePublish(w http.ResponseWriter, r *http.Request) {
 	if err := s.blobs.Put(ctx, digest, tarData); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-
-	// Sign
-	identity := "github.com/" + user.Username
-	bundle, err := s.artSigner.Sign(ctx, digest.String(), identity)
-	if err == nil {
-		s.db.SetVersionSignature(ctx, versionID, string(bundle.BundleJSON), bundle.RekorLogIndex)
 	}
 
 	http.Redirect(w, r, "/"+user.Username+"/"+name, http.StatusSeeOther)

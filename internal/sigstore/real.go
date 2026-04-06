@@ -1,12 +1,12 @@
 package sigstore
 
-// RealSigner and RealVerifier use sigstore-go against Fulcio and Rekor.
+// RekorVerifier queries the Rekor transparency log for verification.
 // The real implementation requires network access and is not unit tested.
 // It is validated via the manual local demo against Sigstore staging.
 //
-// This file is a placeholder. The full implementation will be completed
-// when the deployment infrastructure (Phase 8) provides the OIDC token
-// mechanism needed for server-side keyless signing.
-//
-// The Signer and Verifier interfaces defined in signer.go are the contract.
-// All automated tests use FakeSigner and FakeVerifier from fake.go.
+// Implementation will use sigstore-go's Rekor client to:
+// 1. Query entry by log index
+// 2. Verify inclusion proof
+// 3. Extract signer identity from the certificate SAN
+// 4. Extract signed digest from the entry body
+// 5. Compare against expected digest

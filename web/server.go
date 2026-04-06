@@ -12,7 +12,6 @@ import (
 	"github.com/calebfaruki/impromptu/internal/auth"
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/registry"
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 //go:embed templates/*.html
@@ -25,7 +24,6 @@ var staticFS embed.FS
 type Server struct {
 	db           *index.DB
 	blobs        registry.BlobStore
-	artSigner    sigstore.Signer
 	authH        *auth.Handlers
 	sessions     *auth.SessionStore
 	cookieSigner *auth.CookieSigner
@@ -34,7 +32,7 @@ type Server struct {
 }
 
 // NewServer creates a web server with all dependencies wired.
-func NewServer(db *index.DB, blobs registry.BlobStore, artSigner sigstore.Signer, ah *auth.Handlers, sessions *auth.SessionStore, cookieSigner *auth.CookieSigner, cookieName string) *Server {
+func NewServer(db *index.DB, blobs registry.BlobStore, ah *auth.Handlers, sessions *auth.SessionStore, cookieSigner *auth.CookieSigner, cookieName string) *Server {
 	layout := template.Must(
 		template.New("layout").ParseFS(templateFS, "templates/layout.html"),
 	)
@@ -56,7 +54,6 @@ func NewServer(db *index.DB, blobs registry.BlobStore, artSigner sigstore.Signer
 	return &Server{
 		db:           db,
 		blobs:        blobs,
-		artSigner:    artSigner,
 		authH:        ah,
 		sessions:     sessions,
 		cookieSigner: cookieSigner,

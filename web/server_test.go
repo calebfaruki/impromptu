@@ -17,7 +17,6 @@ import (
 	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/oci"
 	"github.com/calebfaruki/impromptu/internal/registry"
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 func testServer(t *testing.T) (*Server, *index.DB, *registry.MemoryStore) {
@@ -52,8 +51,7 @@ func testServer(t *testing.T) (*Server, *index.DB, *registry.MemoryStore) {
 		},
 	}
 
-	artSigner := &sigstore.FakeSigner{}
-	srv := NewServer(db, blobs, artSigner, ah, sessions, signer, "session")
+	srv := NewServer(db, blobs, ah, sessions, signer, "session")
 	return srv, db, blobs
 }
 
@@ -561,9 +559,8 @@ func TestPublishValidZip(t *testing.T) {
 	if !exists {
 		t.Error("blob not in store")
 	}
-	if v.SignatureBundle == "" {
-		t.Error("expected signature bundle to be set")
-	}
+	// Server-side signing was removed; signature is only set via API publish
+	// with a client-provided bundle, so web form publish leaves it empty.
 }
 
 func TestPublishZeroWidthUnicode(t *testing.T) {

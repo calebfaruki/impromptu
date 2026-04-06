@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/calebfaruki/impromptu/internal/oci"
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 // --- CollectFiles tests ---
@@ -146,7 +145,6 @@ func TestPublishValid(t *testing.T) {
 		Description: "A test",
 		Version:     "1.0.0",
 		RegistryURL: srv.URL,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/alice",
 	})
 	if err != nil {
@@ -168,7 +166,6 @@ func TestPublishContentCheckFailure(t *testing.T) {
 		Dir:      dir,
 		Name:     "bad",
 		Version:  "1.0.0",
-		Signer:   &sigstore.FakeSigner{},
 		Identity: "github.com/alice",
 	})
 	if err == nil {
@@ -187,7 +184,6 @@ func TestPublishUnicodeRejection(t *testing.T) {
 		Dir:      dir,
 		Name:     "bad",
 		Version:  "1.0.0",
-		Signer:   &sigstore.FakeSigner{},
 		Identity: "github.com/alice",
 	})
 	if err == nil {
@@ -209,7 +205,6 @@ func TestPublishOnlyPackagesMdFiles(t *testing.T) {
 		Name:        "test",
 		Version:     "1.0.0",
 		RegistryURL: srv.URL,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/alice",
 	})
 	if err != nil {
@@ -235,7 +230,6 @@ func TestPublishExcludesSubdirectories(t *testing.T) {
 		Name:        "test",
 		Version:     "1.0.0",
 		RegistryURL: srv.URL,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/alice",
 	})
 	if err != nil {
@@ -252,7 +246,6 @@ func TestPublishEmptyDir(t *testing.T) {
 		Dir:      dir,
 		Name:     "empty",
 		Version:  "1.0.0",
-		Signer:   &sigstore.FakeSigner{},
 		Identity: "github.com/alice",
 	})
 	if err == nil {
@@ -291,7 +284,6 @@ func TestPublishTarballContentsCorrect(t *testing.T) {
 		Name:        "test",
 		Version:     "1.0.0",
 		RegistryURL: srv.URL,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/alice",
 	})
 	if err != nil {
@@ -346,7 +338,6 @@ func TestPublishRegistryError(t *testing.T) {
 		Name:        "test",
 		Version:     "1.0.0",
 		RegistryURL: srv.URL,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/alice",
 	})
 	if err == nil {

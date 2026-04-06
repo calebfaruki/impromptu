@@ -157,10 +157,7 @@ func runServe(dev bool) {
 		},
 	}
 
-	// Artifact signer
-	var artSigner sigstore.Signer = &sigstore.FakeSigner{}
-
-	srv := web.NewServer(db, blobs, artSigner, ah, sessions, signer, "session")
+	srv := web.NewServer(db, blobs, ah, sessions, signer, "session")
 
 	httpSrv := &http.Server{
 		Addr:    addr,
@@ -454,7 +451,6 @@ func runPublish() {
 		Version:     version,
 		RegistryURL: registryURL,
 		Token:       token,
-		Signer:      &sigstore.FakeSigner{},
 		Identity:    "github.com/cli-user",
 	})
 	if err != nil {
