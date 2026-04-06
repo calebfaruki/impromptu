@@ -9,16 +9,16 @@ import (
 	"time"
 )
 
-// SearchResult holds a search result from the registry API.
+// SearchResult holds a search result from the index API.
 type SearchResult struct {
-	Name        string `json:"name"`
-	Author      string `json:"author"`
-	Description string `json:"description"`
+	SourceURL      string `json:"source_url"`
+	SignerIdentity string `json:"signer_identity"`
+	Digest         string `json:"digest"`
 }
 
-// Search queries the registry API for prompts matching the given query.
-func Search(ctx context.Context, registryURL, query string) ([]SearchResult, error) {
-	searchURL := fmt.Sprintf("%s/api/v1/search?q=%s", registryURL, url.QueryEscape(query))
+// Search queries the index API for prompts matching the given query.
+func Search(ctx context.Context, indexURL, query string) ([]SearchResult, error) {
+	searchURL := fmt.Sprintf("%s/api/search?q=%s", indexURL, url.QueryEscape(query))
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
@@ -28,12 +28,12 @@ func Search(ctx context.Context, registryURL, query string) ([]SearchResult, err
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("searching registry: %w", err)
+		return nil, fmt.Errorf("searching index: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("index returned %d", resp.StatusCode)
 	}
 
 	var data struct {

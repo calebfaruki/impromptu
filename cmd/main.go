@@ -22,9 +22,9 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: impromptu <command> [args]\n")
-		os.Exit(1)
+	if len(os.Args) < 2 || os.Args[1] == "--help" || os.Args[1] == "-h" {
+		printHelp()
+		os.Exit(0)
 	}
 
 	switch os.Args[1] {
@@ -267,9 +267,9 @@ func runSearch() {
 		os.Exit(1)
 	}
 	query := strings.Join(os.Args[2:], " ")
-	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+	indexURL := envOr("IMPROMPTU_INDEX", "http://localhost:8080")
 
-	results, err := commands.Search(context.Background(), registryURL, query)
+	results, err := commands.Search(context.Background(), indexURL, query)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -279,7 +279,11 @@ func runSearch() {
 		return
 	}
 	for _, r := range results {
-		fmt.Printf("  %s/%s  %s\n", r.Author, r.Name, r.Description)
+		signer := ""
+		if r.SignerIdentity != "" {
+			signer = " (signed by " + r.SignerIdentity + ")"
+		}
+		fmt.Printf("  %s%s\n", r.SourceURL, signer)
 	}
 }
 
@@ -343,6 +347,34 @@ func runRemove() {
 		os.Exit(1)
 	}
 	fmt.Printf("Removed %s.\n", alias)
+}
+
+func printHelp() {
+	fmt.Print(`impromptu -- secure prompt distribution
+
+Commands:
+  init       Create a new Promptfile in the current directory
+  pull       Fetch prompt dependencies (or add a new one with --git/--oci)
+  search     Search the index for prompts
+  update     Check for newer versions of dependencies
+  remove     Remove a dependency
+
+Pull flags:
+  --git <url>       Git repository URL
+  --oci <ref>       OCI image reference
+  --tag <tag>       Git tag or OCI tag
+  --branch <name>   Git branch (mutable, requires --force)
+  --commit <sha>    Git commit SHA
+  --digest <hash>   OCI digest pin
+  --path <dir>      Subdirectory within git repo
+  --inline          Place single-file prompt in cwd instead of subdirectory
+  --as <alias>      Override default alias name
+  --force           Bypass security checks (unsigned, mutable refs, cooldown)
+  --yes             Skip confirmation prompts (CI mode)
+
+Environment:
+  IMPROMPTU_INDEX   Index server URL (default: http://localhost:8080)
+`)
 }
 
 func fatal(format string, args ...any) {

@@ -167,19 +167,19 @@ func mockSearchServer(t *testing.T, results []SearchResult) *httptest.Server {
 
 func TestSearchWithResults(t *testing.T) {
 	srv := mockSearchServer(t, []SearchResult{
-		{Name: "coder", Author: "alice", Description: "Code review prompt"},
+		{SourceURL: "https://github.com/alice/coder", SignerIdentity: "alice@github.com", Digest: "sha256:abc"},
 	})
 	defer srv.Close()
 
-	results, err := Search(context.Background(), srv.URL, "code")
+	results, err := Search(context.Background(), srv.URL, "coder")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Name != "coder" {
-		t.Errorf("name: got %q", results[0].Name)
+	if results[0].SourceURL != "https://github.com/alice/coder" {
+		t.Errorf("source_url: got %q", results[0].SourceURL)
 	}
 }
 
@@ -252,7 +252,7 @@ func TestSearchWithSpaces(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"results": []SearchResult{
-			{Name: "coder", Author: "alice", Description: "Code review"},
+			{SourceURL: "https://github.com/alice/coder", SignerIdentity: "alice@github.com"},
 		}})
 	}))
 	defer srv.Close()
