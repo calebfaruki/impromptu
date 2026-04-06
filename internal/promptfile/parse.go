@@ -44,10 +44,7 @@ func Parse(data []byte) (*Promptfile, error) {
 func parseEntry(entry any) (Source, error) {
 	switch v := entry.(type) {
 	case string:
-		if _, _, _, err := ParseRef(v); err != nil {
-			return Source{}, err
-		}
-		return Source{Kind: SourceRegistry, Ref: v}, nil
+		return Source{}, fmt.Errorf("string format %q is no longer supported; use { git = \"...\", tag = \"...\" } or { oci = \"...\", tag = \"...\" } instead", v)
 	case map[string]any:
 		return parseSource(v)
 	default:
@@ -80,14 +77,10 @@ func (pf *Promptfile) Bytes() ([]byte, error) {
 
 func formatSource(src Source) (string, error) {
 	switch src.Kind {
-	case SourceRegistry:
-		return fmt.Sprintf("%q", src.Ref), nil
 	case SourceGit:
 		return formatGitSource(src), nil
 	case SourceOCI:
 		return formatOCISource(src), nil
-	case SourcePrivate:
-		return fmt.Sprintf("{registry = %q, ref = %q}", src.Registry, src.Ref), nil
 	default:
 		return "", fmt.Errorf("unknown source kind %q", src.Kind)
 	}
@@ -108,25 +101,33 @@ func formatGitSource(src Source) string {
 	if src.Path != "" {
 		parts = append(parts, fmt.Sprintf("path = %q", src.Path))
 	}
+	if src.Inline {
+		parts = append(parts, "inline = true")
+	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
 func formatOCISource(src Source) string {
+	var parts []string
+	parts = append(parts, fmt.Sprintf("oci = %q", src.OCI))
 	if src.OCITag != "" {
-		return fmt.Sprintf("{oci = %q, tag = %q}", src.OCI, src.OCITag)
+		parts = append(parts, fmt.Sprintf("tag = %q", src.OCITag))
 	}
-	return fmt.Sprintf("{oci = %q, digest = %q}", src.OCI, src.Digest)
+	if src.Digest != "" {
+		parts = append(parts, fmt.Sprintf("digest = %q", src.Digest))
+	}
+	if src.Inline {
+		parts = append(parts, "inline = true")
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// AddEntry adds a prompt entry parsed from a short-form ref string.
-func (pf *Promptfile) AddEntry(name, ref string) error {
+// AddSource adds a prompt entry with a structured Source. Returns error if name exists.
+func (pf *Promptfile) AddSource(name string, src Source) error {
 	if _, exists := pf.Prompts[name]; exists {
 		return fmt.Errorf("prompt %q already exists", name)
 	}
-	if _, _, _, err := ParseRef(ref); err != nil {
-		return err
-	}
-	pf.Prompts[name] = Source{Kind: SourceRegistry, Ref: ref}
+	pf.Prompts[name] = src
 	return nil
 }
 

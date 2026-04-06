@@ -137,8 +137,8 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 	return result, nil
 }
 
-// InlinePull parses an inline ref, adds it to the Promptfile, and pulls.
-func InlinePull(ctx context.Context, cfg Config, ref string, alias string) (*Result, error) {
+// InlinePull adds a source to the Promptfile and pulls.
+func InlinePull(ctx context.Context, cfg Config, src promptfile.Source, alias string) (*Result, error) {
 	pfPath := filepath.Join(cfg.Dir, "Promptfile")
 
 	pfData, err := os.ReadFile(pfPath)
@@ -154,14 +154,12 @@ func InlinePull(ctx context.Context, cfg Config, ref string, alias string) (*Res
 		return nil, fmt.Errorf("parsing Promptfile: %w", err)
 	}
 
-	// Determine alias
+	// Derive alias if not provided
 	if alias == "" {
-		parts := strings.SplitN(ref, "@", 2)
-		nameParts := strings.SplitN(parts[0], "/", 2)
-		if len(nameParts) < 2 {
-			return nil, fmt.Errorf("invalid ref %q: expected author/name@version", ref)
-		}
-		alias = nameParts[1]
+		alias = promptfile.AliasFromSource(src)
+	}
+	if alias == "" {
+		return nil, fmt.Errorf("cannot derive alias from source, use --as to specify one")
 	}
 
 	// Check collision
@@ -170,8 +168,8 @@ func InlinePull(ctx context.Context, cfg Config, ref string, alias string) (*Res
 	}
 
 	// Add to Promptfile
-	if err := pf.AddEntry(alias, ref); err != nil {
-		return nil, fmt.Errorf("adding %s: %w", ref, err)
+	if err := pf.AddSource(alias, src); err != nil {
+		return nil, fmt.Errorf("adding source: %w", err)
 	}
 
 	pfBytes, err := pf.Bytes()
@@ -187,14 +185,6 @@ func InlinePull(ctx context.Context, cfg Config, ref string, alias string) (*Res
 
 func resolveSource(ctx context.Context, name string, src promptfile.Source, cfg Config) (lockfile.LockfileEntry, []byte, []string, error) {
 	switch src.Kind {
-	case promptfile.SourceRegistry:
-		client := resolver.NewRegistryClient(cfg.RegistryURL, cfg.Verifier)
-		result, err := client.Resolve(ctx, src.Ref, cfg.Force)
-		if err != nil {
-			return lockfile.LockfileEntry{}, nil, nil, err
-		}
-		return result.Entry, result.Blob, result.Warnings, nil
-
 	case promptfile.SourceGit:
 		gr := &resolver.GitResolver{}
 		result, err := gr.Resolve(ctx, src, cfg.Force)
@@ -221,14 +211,6 @@ func resolveSource(ctx context.Context, name string, src promptfile.Source, cfg 
 			return lockfile.LockfileEntry{}, nil, nil, fmt.Errorf("packaging oci content: %w", err)
 		}
 		return result.Entry, blob, result.Warnings, nil
-
-	case promptfile.SourcePrivate:
-		client := resolver.NewRegistryClient(src.Registry, cfg.Verifier)
-		result, err := client.Resolve(ctx, src.Ref, cfg.Force)
-		if err != nil {
-			return lockfile.LockfileEntry{}, nil, nil, err
-		}
-		return result.Entry, result.Blob, result.Warnings, nil
 
 	default:
 		return lockfile.LockfileEntry{}, nil, nil, fmt.Errorf("unsupported source kind: %s", src.Kind)

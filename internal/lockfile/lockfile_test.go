@@ -15,8 +15,9 @@ func TestParseLockfileRegistry(t *testing.T) {
 
 [[prompt]]
 name = "coder"
-source = "registry"
-ref = "alice/coder@1"
+source = "git"
+git = "https://github.com/alice/coder"
+tag = "v1"
 digest = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 signer = "github.com/alice"
 `)
@@ -28,7 +29,7 @@ signer = "github.com/alice"
 	if !ok {
 		t.Fatal("missing entry 'coder'")
 	}
-	if e.Source != promptfile.SourceRegistry {
+	if e.Source != promptfile.SourceGit {
 		t.Errorf("source: got %q", e.Source)
 	}
 	if e.Digest == "" {
@@ -94,7 +95,7 @@ digest = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b982
 func TestParseLockfileMissingVersion(t *testing.T) {
 	data := []byte(`[[prompt]]
 name = "coder"
-source = "registry"
+source = "git"
 `)
 	_, err := ParseLockfile(data)
 	if err == nil {
@@ -108,8 +109,9 @@ func TestLockfileRoundTrip(t *testing.T) {
 		Entries: map[string]LockfileEntry{
 			"coder": {
 				Name:   "coder",
-				Source: promptfile.SourceRegistry,
-				Ref:    "alice/coder@1",
+				Source: promptfile.SourceGit,
+				Git:    "https://github.com/alice/coder",
+				Tag:    "v1",
 				Digest: "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
 				Signer: "github.com/alice",
 			},
@@ -130,8 +132,11 @@ func TestLockfileRoundTrip(t *testing.T) {
 		t.Fatalf("got %d entries, want 1", len(parsed.Entries))
 	}
 	e := parsed.Entries["coder"]
-	if e.Ref != "alice/coder@1" {
-		t.Errorf("ref: got %q", e.Ref)
+	if e.Git != "https://github.com/alice/coder" {
+		t.Errorf("git: got %q", e.Git)
+	}
+	if e.Tag != "v1" {
+		t.Errorf("tag: got %q", e.Tag)
 	}
 	if e.Digest != original.Entries["coder"].Digest {
 		t.Errorf("digest mismatch after round-trip")
@@ -144,7 +149,7 @@ func TestDiffAdded(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceRegistry, Ref: "alice/coder@1"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
 		},
 	}
 	lf := &Lockfile{Version: 1, Entries: map[string]LockfileEntry{}}
@@ -160,7 +165,7 @@ func TestDiffRemoved(t *testing.T) {
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"old": {Name: "old", Source: promptfile.SourceRegistry, Ref: "alice/old@1"},
+			"old": {Name: "old", Source: promptfile.SourceGit, Git: "https://github.com/alice/old", Tag: "v1"},
 		},
 	}
 
@@ -174,13 +179,13 @@ func TestDiffUnchanged(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceRegistry, Ref: "alice/coder@1"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceRegistry, Ref: "alice/coder@1"},
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
 		},
 	}
 
@@ -197,13 +202,13 @@ func TestDiffVersionChange(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceRegistry, Ref: "alice/coder@2"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v2"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceRegistry, Ref: "alice/coder@1"},
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
 		},
 	}
 
@@ -402,17 +407,17 @@ func TestDiffOCIRegistryChange(t *testing.T) {
 	}
 }
 
-func TestDiffPrivateUnchanged(t *testing.T) {
+func TestDiffGitSameRepoUnchanged(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"corp": {Kind: promptfile.SourcePrivate, Registry: "https://internal.co", Ref: "team/deploy@latest"},
+			"corp": {Kind: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"corp": {Name: "corp", Source: promptfile.SourcePrivate, Registry: "https://internal.co", Ref: "team/deploy@latest"},
+			"corp": {Name: "corp", Source: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
 		},
 	}
 
@@ -422,23 +427,23 @@ func TestDiffPrivateUnchanged(t *testing.T) {
 	}
 }
 
-func TestDiffPrivateRefChange(t *testing.T) {
+func TestDiffGitSameRepoTagChange(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"corp": {Kind: promptfile.SourcePrivate, Registry: "https://internal.co", Ref: "team/deploy@2"},
+			"corp": {Kind: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v2"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"corp": {Name: "corp", Source: promptfile.SourcePrivate, Registry: "https://internal.co", Ref: "team/deploy@1"},
+			"corp": {Name: "corp", Source: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
 		},
 	}
 
 	result := Diff(pf, lf)
 	if len(result.Added) != 1 {
-		t.Errorf("private ref change should trigger re-resolve, got added=%v", result.Added)
+		t.Errorf("tag change should trigger re-resolve, got added=%v", result.Added)
 	}
 }
 
@@ -533,7 +538,7 @@ func TestDiffSourceKindChange(t *testing.T) {
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceRegistry, Ref: "alice/coder@1"},
+			"coder": {Name: "coder", Source: promptfile.SourceOCI, OCI: "ghcr.io/alice/coder", Tag: "v1"},
 		},
 	}
 
@@ -627,17 +632,18 @@ func TestLockfileRoundTripOCI(t *testing.T) {
 	}
 }
 
-func TestLockfileRoundTripPrivate(t *testing.T) {
+func TestLockfileRoundTripGitWithSigner(t *testing.T) {
 	original := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
 			"corp": {
-				Name:     "corp",
-				Source:   promptfile.SourcePrivate,
-				Registry: "https://internal.co",
-				Ref:      "team/deploy@latest",
-				Digest:   "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-				Signer:   "github.com/teamlead",
+				Name:   "corp",
+				Source: promptfile.SourceGit,
+				Git:    "https://internal.co/team/deploy",
+				Tag:    "v1",
+				Commit: "abc123",
+				Digest: "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+				Signer: "github.com/teamlead",
 			},
 		},
 	}
@@ -653,14 +659,14 @@ func TestLockfileRoundTripPrivate(t *testing.T) {
 	}
 
 	e := parsed.Entries["corp"]
-	if e.Source != promptfile.SourcePrivate {
+	if e.Source != promptfile.SourceGit {
 		t.Errorf("source: got %q", e.Source)
 	}
-	if e.Registry != "https://internal.co" {
-		t.Errorf("registry: got %q", e.Registry)
+	if e.Git != "https://internal.co/team/deploy" {
+		t.Errorf("git: got %q", e.Git)
 	}
-	if e.Ref != "team/deploy@latest" {
-		t.Errorf("ref: got %q", e.Ref)
+	if e.Tag != "v1" {
+		t.Errorf("tag: got %q", e.Tag)
 	}
 	if e.Signer != "github.com/teamlead" {
 		t.Errorf("signer: got %q", e.Signer)

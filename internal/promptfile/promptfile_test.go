@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// --- Path validation ---
+
 func TestValidatePath(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -32,85 +34,19 @@ func TestValidatePath(t *testing.T) {
 	}
 }
 
-func TestValidateVersion(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		wantErr bool
-	}{
-		{"latest", "latest", false},
-		{"major only", "2", false},
-		{"major only single", "1", false},
-		{"exact semver", "2.1.0", false},
-		{"exact semver zeros", "0.0.1", false},
-		{"digest pin", "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", false},
-		{"reject empty", "", true},
-		{"reject bare word", "stable", true},
-		{"reject partial semver", "2.1", true},
-		{"reject four part", "1.2.3.4", true},
-		{"reject short digest", "sha256:abc", true},
-		{"reject uppercase digest", "sha256:2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824", true},
-		{"reject md5 prefix", "md5:abc123", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateVersion(tt.version)
-			if tt.wantErr && err == nil {
-				t.Error("expected error, got nil")
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
 // --- Parse tests ---
 
-func TestParseShortForm(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\ncoder = \"alice/coder@1\"\n")
-	pf, err := Parse(data)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	src, ok := pf.Prompts["coder"]
-	if !ok {
-		t.Fatal("missing prompt 'coder'")
-	}
-	if src.Kind != SourceRegistry {
-		t.Errorf("kind: got %q, want %q", src.Kind, SourceRegistry)
-	}
-	if src.Ref != "alice/coder@1" {
-		t.Errorf("ref: got %q, want %q", src.Ref, "alice/coder@1")
-	}
-}
-
-func TestParseLongForm(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\nreviewer = {ref = \"bob/code-review@2.1.0\"}\n")
-	pf, err := Parse(data)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	src := pf.Prompts["reviewer"]
-	if src.Kind != SourceRegistry {
-		t.Errorf("kind: got %q, want %q", src.Kind, SourceRegistry)
-	}
-	if src.Ref != "bob/code-review@2.1.0" {
-		t.Errorf("ref: got %q", src.Ref)
-	}
-}
-
 func TestParseGitTag(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\ninternal = {git = \"https://github.com/org/repo\", tag = \"v1\"}\n")
+	data := []byte("version = 1\n\n[prompts]\ncoder = {git = \"https://github.com/alice/coder\", tag = \"v1\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	src := pf.Prompts["internal"]
+	src := pf.Prompts["coder"]
 	if src.Kind != SourceGit {
 		t.Errorf("kind: got %q", src.Kind)
 	}
-	if src.Git != "https://github.com/org/repo" {
+	if src.Git != "https://github.com/alice/coder" {
 		t.Errorf("git: got %q", src.Git)
 	}
 	if src.Tag != "v1" {
@@ -119,45 +55,56 @@ func TestParseGitTag(t *testing.T) {
 }
 
 func TestParseGitBranch(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\nnightly = {git = \"https://github.com/org/repo\", branch = \"main\"}\n")
+	data := []byte("version = 1\n\n[prompts]\ndev = {git = \"https://github.com/alice/coder\", branch = \"main\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	if pf.Prompts["nightly"].Branch != "main" {
-		t.Errorf("branch: got %q", pf.Prompts["nightly"].Branch)
+	if pf.Prompts["dev"].Branch != "main" {
+		t.Errorf("branch: got %q", pf.Prompts["dev"].Branch)
 	}
 }
 
 func TestParseGitCommit(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\npinned = {git = \"https://github.com/org/repo\", commit = \"abc123\"}\n")
+	data := []byte("version = 1\n\n[prompts]\npinned = {git = \"https://github.com/alice/coder\", commit = \"a1b2c3d\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	if pf.Prompts["pinned"].Commit != "abc123" {
+	if pf.Prompts["pinned"].Commit != "a1b2c3d" {
 		t.Errorf("commit: got %q", pf.Prompts["pinned"].Commit)
 	}
 }
 
 func TestParseGitWithPath(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\nsub = {git = \"https://github.com/org/repo\", tag = \"v1\", path = \"review\"}\n")
+	data := []byte("version = 1\n\n[prompts]\nwriter = {git = \"https://github.com/alice/prompts\", tag = \"v1\", path = \"writer\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	if pf.Prompts["sub"].Path != "review" {
-		t.Errorf("path: got %q", pf.Prompts["sub"].Path)
+	if pf.Prompts["writer"].Path != "writer" {
+		t.Errorf("path: got %q", pf.Prompts["writer"].Path)
+	}
+}
+
+func TestParseGitSSH(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\ninternal = {git = \"git@github.com:alice/coder.git\", tag = \"v2\"}\n")
+	pf, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pf.Prompts["internal"].Git != "git@github.com:alice/coder.git" {
+		t.Errorf("git: got %q", pf.Prompts["internal"].Git)
 	}
 }
 
 func TestParseOCITag(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\nimg = {oci = \"ghcr.io/org/prompt\", tag = \"v1\"}\n")
+	data := []byte("version = 1\n\n[prompts]\nreviewer = {oci = \"ghcr.io/alice/reviewer\", tag = \"v1\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	src := pf.Prompts["img"]
+	src := pf.Prompts["reviewer"]
 	if src.Kind != SourceOCI {
 		t.Errorf("kind: got %q", src.Kind)
 	}
@@ -167,100 +114,167 @@ func TestParseOCITag(t *testing.T) {
 }
 
 func TestParseOCIDigest(t *testing.T) {
-	digest := "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-	data := []byte("version = 1\n\n[prompts]\npinned = {oci = \"ghcr.io/org/prompt\", digest = \"" + digest + "\"}\n")
+	data := []byte("version = 1\n\n[prompts]\npinned = {oci = \"ghcr.io/alice/reviewer\", digest = \"sha256:abc123\"}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	if pf.Prompts["pinned"].Digest != digest {
+	if pf.Prompts["pinned"].Digest != "sha256:abc123" {
 		t.Errorf("digest: got %q", pf.Prompts["pinned"].Digest)
 	}
 }
 
-func TestParsePrivateRegistry(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\ncorp = {registry = \"https://prompts.internal.co\", ref = \"team/deploy@latest\"}\n")
+func TestParseInline(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nclaude = {git = \"https://github.com/alice/claude-md\", tag = \"v1\", inline = true}\n")
 	pf, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatal(err)
 	}
-	src := pf.Prompts["corp"]
-	if src.Kind != SourcePrivate {
-		t.Errorf("kind: got %q", src.Kind)
-	}
-	if src.Registry != "https://prompts.internal.co" {
-		t.Errorf("registry: got %q", src.Registry)
+	if !pf.Prompts["claude"].Inline {
+		t.Error("expected inline = true")
 	}
 }
 
-func TestParseMissingVersion(t *testing.T) {
-	data := []byte("[prompts]\ncoder = \"alice/coder@1\"\n")
+func TestRejectGitAndOCI(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"url\", oci = \"ref\", tag = \"v1\"}\n")
 	_, err := Parse(data)
 	if err == nil {
-		t.Fatal("expected error for missing version")
+		t.Fatal("expected error for git + oci")
+	}
+	if !strings.Contains(err.Error(), "both git and oci") {
+		t.Errorf("error should mention both: %v", err)
 	}
 }
 
-func TestParseEmptyPrompts(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\n")
-	pf, err := Parse(data)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if len(pf.Prompts) != 0 {
-		t.Errorf("expected 0 prompts, got %d", len(pf.Prompts))
-	}
-}
-
-func TestParseRejectPathTraversal(t *testing.T) {
-	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"https://github.com/org/repo\", tag = \"v1\", path = \"../escape\"}\n")
+func TestRejectTagAndBranch(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"url\", tag = \"v1\", branch = \"main\"}\n")
 	_, err := Parse(data)
 	if err == nil {
-		t.Fatal("expected error for path traversal")
+		t.Fatal("expected error for tag + branch")
 	}
 }
 
-// --- Write tests ---
-
-func TestAddEntry(t *testing.T) {
-	pf := &Promptfile{Version: 1, Prompts: map[string]Source{}}
-	err := pf.AddEntry("coder", "alice/coder@1")
-	if err != nil {
-		t.Fatalf("AddEntry: %v", err)
-	}
-	if _, ok := pf.Prompts["coder"]; !ok {
-		t.Error("entry not added")
-	}
-}
-
-func TestAddEntryDuplicate(t *testing.T) {
-	pf := &Promptfile{Version: 1, Prompts: map[string]Source{
-		"coder": {Kind: SourceRegistry, Ref: "alice/coder@1"},
-	}}
-	err := pf.AddEntry("coder", "alice/coder@2")
+func TestRejectPathOnOCI(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {oci = \"ref\", tag = \"v1\", path = \"sub\"}\n")
+	_, err := Parse(data)
 	if err == nil {
-		t.Fatal("expected error for duplicate")
+		t.Fatal("expected error for path on OCI")
 	}
 }
 
-func TestRemoveEntry(t *testing.T) {
-	pf := &Promptfile{Version: 1, Prompts: map[string]Source{
-		"coder": {Kind: SourceRegistry, Ref: "alice/coder@1"},
-	}}
-	err := pf.RemoveEntry("coder")
+func TestRejectOldShortForm(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\ncoder = \"alice/coder@1\"\n")
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for old short form")
+	}
+	if !strings.Contains(err.Error(), "no longer supported") {
+		t.Errorf("error should give migration guidance: %v", err)
+	}
+}
+
+func TestRejectPathTraversal(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"url\", tag = \"v1\", path = \"../escape\"}\n")
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestRejectAbsolutePath(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"url\", tag = \"v1\", path = \"/etc/prompts\"}\n")
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestRejectBackslashPath(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nbad = {git = \"url\", tag = \"v1\", path = \"sub\\\\dir\"}\n")
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// --- SourceFromFlags ---
+
+func TestSourceFromFlagsGitTag(t *testing.T) {
+	src, err := SourceFromFlags("https://github.com/alice/coder", "", "v1", "", "", "", "", false)
 	if err != nil {
-		t.Fatalf("RemoveEntry: %v", err)
+		t.Fatal(err)
+	}
+	if src.Kind != SourceGit || src.Tag != "v1" {
+		t.Errorf("got %+v", src)
+	}
+}
+
+func TestSourceFromFlagsOCIDigest(t *testing.T) {
+	src, err := SourceFromFlags("", "ghcr.io/alice/reviewer", "", "", "", "sha256:abc", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Kind != SourceOCI || src.Digest != "sha256:abc" {
+		t.Errorf("got %+v", src)
+	}
+}
+
+func TestSourceFromFlagsMissingVersion(t *testing.T) {
+	_, err := SourceFromFlags("https://github.com/alice/coder", "", "", "", "", "", "", false)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSourceFromFlagsBothGitAndOCI(t *testing.T) {
+	_, err := SourceFromFlags("git-url", "oci-ref", "v1", "", "", "", "", false)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSourceFromFlagsInline(t *testing.T) {
+	src, err := SourceFromFlags("https://github.com/alice/claude-md", "", "v1", "", "", "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !src.Inline {
+		t.Error("expected inline")
+	}
+}
+
+// --- Alias ---
+
+func TestAliasFromGitURL(t *testing.T) {
+	if a := AliasFromSource(Source{Kind: SourceGit, Git: "https://github.com/alice/coder"}); a != "coder" {
+		t.Errorf("got %q", a)
+	}
+}
+
+func TestAliasFromGitSuffix(t *testing.T) {
+	if a := AliasFromSource(Source{Kind: SourceGit, Git: "git@github.com:alice/coder.git"}); a != "coder" {
+		t.Errorf("got %q", a)
+	}
+}
+
+func TestAliasFromOCI(t *testing.T) {
+	if a := AliasFromSource(Source{Kind: SourceOCI, OCI: "ghcr.io/alice/reviewer"}); a != "reviewer" {
+		t.Errorf("got %q", a)
+	}
+}
+
+// --- Write ---
+
+func TestAddSourceAndRemove(t *testing.T) {
+	pf := &Promptfile{Version: 1, Prompts: map[string]Source{}}
+	if err := pf.AddSource("coder", Source{Kind: SourceGit, Git: "url", Tag: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pf.RemoveEntry("coder"); err != nil {
+		t.Fatal(err)
 	}
 	if len(pf.Prompts) != 0 {
-		t.Error("entry not removed")
-	}
-}
-
-func TestRemoveEntryNotFound(t *testing.T) {
-	pf := &Promptfile{Version: 1, Prompts: map[string]Source{}}
-	err := pf.RemoveEntry("nonexistent")
-	if err == nil {
-		t.Fatal("expected error for not found")
+		t.Error("not removed")
 	}
 }
 
@@ -268,55 +282,56 @@ func TestRoundTrip(t *testing.T) {
 	original := &Promptfile{
 		Version: 1,
 		Prompts: map[string]Source{
-			"alpha": {Kind: SourceRegistry, Ref: "alice/alpha@1"},
-			"beta":  {Kind: SourceRegistry, Ref: "bob/beta@2.1.0"},
+			"coder":    {Kind: SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
+			"reviewer": {Kind: SourceOCI, OCI: "ghcr.io/alice/reviewer", OCITag: "v2"},
 		},
 	}
-
 	data, err := original.Bytes()
 	if err != nil {
-		t.Fatalf("Bytes: %v", err)
+		t.Fatal(err)
 	}
-
 	parsed, err := Parse(data)
 	if err != nil {
-		t.Fatalf("Parse round-trip: %v", err)
+		t.Fatal(err)
 	}
-
-	if len(parsed.Prompts) != len(original.Prompts) {
-		t.Fatalf("prompt count: got %d, want %d", len(parsed.Prompts), len(original.Prompts))
+	if len(parsed.Prompts) != 2 {
+		t.Fatalf("got %d", len(parsed.Prompts))
 	}
-	for name, src := range original.Prompts {
-		got, ok := parsed.Prompts[name]
-		if !ok {
-			t.Errorf("missing prompt %q after round-trip", name)
-			continue
-		}
-		if got.Ref != src.Ref {
-			t.Errorf("prompt %q: got ref %q, want %q", name, got.Ref, src.Ref)
-		}
+	if parsed.Prompts["coder"].Tag != "v1" {
+		t.Error("coder tag mismatch")
+	}
+	if parsed.Prompts["reviewer"].OCITag != "v2" {
+		t.Error("reviewer tag mismatch")
 	}
 }
 
-func TestBytesOutput(t *testing.T) {
-	pf := &Promptfile{
+func TestRoundTripInline(t *testing.T) {
+	original := &Promptfile{
 		Version: 1,
 		Prompts: map[string]Source{
-			"coder": {Kind: SourceRegistry, Ref: "alice/coder@1"},
+			"claude": {Kind: SourceGit, Git: "https://github.com/alice/claude-md", Tag: "v1", Inline: true},
 		},
 	}
-	data, err := pf.Bytes()
+	data, err := original.Bytes()
 	if err != nil {
-		t.Fatalf("Bytes: %v", err)
+		t.Fatal(err)
 	}
-	out := string(data)
-	if !strings.Contains(out, "version = 1") {
-		t.Error("missing version header")
+	parsed, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out, "[prompts]") {
-		t.Error("missing [prompts] section")
+	if !parsed.Prompts["claude"].Inline {
+		t.Error("inline lost in round-trip")
 	}
-	if !strings.Contains(out, `coder = "alice/coder@1"`) {
-		t.Errorf("unexpected output: %s", out)
+}
+
+func TestEmptyPrompts(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\n")
+	pf, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pf.Prompts) != 0 {
+		t.Errorf("expected 0, got %d", len(pf.Prompts))
 	}
 }

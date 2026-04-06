@@ -16,6 +16,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/commands"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
+	"github.com/calebfaruki/impromptu/internal/promptfile"
 	"github.com/calebfaruki/impromptu/internal/publish"
 	"github.com/calebfaruki/impromptu/internal/pull"
 	"github.com/calebfaruki/impromptu/internal/registry"
@@ -204,7 +205,8 @@ func runPull() {
 	dir, _ := os.Getwd()
 	force := false
 	yes := false
-	var inlineRef, alias string
+	inline := false
+	var gitURL, ociRef, tag, branch, commit, digest, path, alias string
 
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -213,25 +215,56 @@ func runPull() {
 			force = true
 		case "--yes":
 			yes = true
+		case "--inline":
+			inline = true
+		case "--git":
+			if i+1 < len(args) {
+				i++
+				gitURL = args[i]
+			}
+		case "--oci":
+			if i+1 < len(args) {
+				i++
+				ociRef = args[i]
+			}
+		case "--tag":
+			if i+1 < len(args) {
+				i++
+				tag = args[i]
+			}
+		case "--branch":
+			if i+1 < len(args) {
+				i++
+				branch = args[i]
+			}
+		case "--commit":
+			if i+1 < len(args) {
+				i++
+				commit = args[i]
+			}
+		case "--digest":
+			if i+1 < len(args) {
+				i++
+				digest = args[i]
+			}
+		case "--path":
+			if i+1 < len(args) {
+				i++
+				path = args[i]
+			}
 		case "--as":
 			if i+1 < len(args) {
 				i++
 				alias = args[i]
 			}
-		default:
-			if !strings.HasPrefix(args[i], "-") {
-				inlineRef = args[i]
-			}
 		}
 	}
 
-	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
 	cfg := pull.Config{
-		Dir:         dir,
-		Force:       force,
-		Yes:         yes,
-		RegistryURL: registryURL,
-		Verifier:    &sigstore.FakeVerifier{},
+		Dir:      dir,
+		Force:    force,
+		Yes:      yes,
+		Verifier: &sigstore.FakeVerifier{},
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
 			fmt.Print("Continue? [y/N] ")
@@ -243,8 +276,13 @@ func runPull() {
 
 	var result *pull.Result
 	var err error
-	if inlineRef != "" {
-		result, err = pull.InlinePull(context.Background(), cfg, inlineRef, alias)
+	if gitURL != "" || ociRef != "" {
+		src, srcErr := promptfile.SourceFromFlags(gitURL, ociRef, tag, branch, commit, digest, path, inline)
+		if srcErr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", srcErr)
+			os.Exit(1)
+		}
+		result, err = pull.InlinePull(context.Background(), cfg, src, alias)
 	} else {
 		result, err = pull.Pull(context.Background(), cfg)
 	}
@@ -330,7 +368,7 @@ func runUpdate() {
 		},
 	}
 
-	result, err := commands.Update(context.Background(), cfg, &sigstore.FakeVerifier{}, names...)
+	result, err := commands.Update(context.Background(), cfg, names...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

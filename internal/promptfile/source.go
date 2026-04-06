@@ -2,58 +2,27 @@ package promptfile
 
 import (
 	"fmt"
+	"path"
 	"strings"
 )
 
-// ParseRef parses "author/name@version" into its parts and validates the version.
-func ParseRef(ref string) (author, name, version string, err error) {
-	atIdx := strings.LastIndex(ref, "@")
-	if atIdx < 0 {
-		return "", "", "", fmt.Errorf("ref %q missing @version", ref)
-	}
-	authorName := ref[:atIdx]
-	version = ref[atIdx+1:]
-
-	slashIdx := strings.Index(authorName, "/")
-	if slashIdx < 0 {
-		return "", "", "", fmt.Errorf("ref %q missing author/name", ref)
-	}
-	author = authorName[:slashIdx]
-	name = authorName[slashIdx+1:]
-
-	if author == "" || name == "" {
-		return "", "", "", fmt.Errorf("ref %q has empty author or name", ref)
-	}
-
-	if err := ValidateVersion(version); err != nil {
-		return "", "", "", fmt.Errorf("ref %q: %w", ref, err)
-	}
-	return author, name, version, nil
-}
-
 // parseSource detects the source type from a TOML table entry.
 func parseSource(raw map[string]any) (Source, error) {
-	// Check registry before ref -- private registry tables have both keys
-	if regURL, ok := raw["registry"].(string); ok {
-		return parsePrivateSource(regURL, raw)
+	_, hasGit := raw["git"].(string)
+	_, hasOCI := raw["oci"].(string)
+
+	if hasGit && hasOCI {
+		return Source{}, fmt.Errorf("entry cannot have both git and oci")
 	}
 
-	if ref, ok := raw["ref"].(string); ok {
-		if _, _, _, err := ParseRef(ref); err != nil {
-			return Source{}, err
-		}
-		return Source{Kind: SourceRegistry, Ref: ref}, nil
+	if hasGit {
+		return parseGitSource(raw["git"].(string), raw)
+	}
+	if hasOCI {
+		return parseOCISource(raw["oci"].(string), raw)
 	}
 
-	if gitURL, ok := raw["git"].(string); ok {
-		return parseGitSource(gitURL, raw)
-	}
-
-	if ociRef, ok := raw["oci"].(string); ok {
-		return parseOCISource(ociRef, raw)
-	}
-
-	return Source{}, fmt.Errorf("unknown source type: must have ref, git, oci, or registry key")
+	return Source{}, fmt.Errorf("entry must have git or oci key")
 }
 
 func parseGitSource(gitURL string, raw map[string]any) (Source, error) {
@@ -80,11 +49,15 @@ func parseGitSource(gitURL string, raw map[string]any) (Source, error) {
 		return Source{}, fmt.Errorf("git source must have exactly one of tag, branch, or commit")
 	}
 
-	if path, ok := raw["path"].(string); ok && path != "" {
-		if err := ValidatePath(path); err != nil {
+	if p, ok := raw["path"].(string); ok && p != "" {
+		if err := ValidatePath(p); err != nil {
 			return Source{}, fmt.Errorf("git path: %w", err)
 		}
-		s.Path = path
+		s.Path = p
+	}
+
+	if inline, ok := raw["inline"].(bool); ok {
+		s.Inline = inline
 	}
 
 	return s, nil
@@ -103,6 +76,10 @@ func parseOCISource(ociRef string, raw map[string]any) (Source, error) {
 		return Source{}, fmt.Errorf("OCI source must have tag or digest")
 	}
 
+	if _, hasPath := raw["path"].(string); hasPath {
+		return Source{}, fmt.Errorf("path is not valid for OCI sources")
+	}
+
 	if tag != "" {
 		s.OCITag = tag
 	}
@@ -110,16 +87,65 @@ func parseOCISource(ociRef string, raw map[string]any) (Source, error) {
 		s.Digest = digest
 	}
 
+	if inline, ok := raw["inline"].(bool); ok {
+		s.Inline = inline
+	}
+
 	return s, nil
 }
 
-func parsePrivateSource(regURL string, raw map[string]any) (Source, error) {
-	ref, ok := raw["ref"].(string)
-	if !ok || ref == "" {
-		return Source{}, fmt.Errorf("private registry source must have ref")
+// SourceFromFlags builds a Source from CLI flags and validates mutual exclusivity.
+func SourceFromFlags(git, oci, tag, branch, commit, digest, p string, inline bool) (Source, error) {
+	if git != "" && oci != "" {
+		return Source{}, fmt.Errorf("cannot specify both --git and --oci")
 	}
-	if _, _, _, err := ParseRef(ref); err != nil {
-		return Source{}, err
+	if git == "" && oci == "" {
+		return Source{}, fmt.Errorf("must specify --git or --oci")
 	}
-	return Source{Kind: SourcePrivate, Registry: regURL, Ref: ref}, nil
+
+	if git != "" {
+		raw := map[string]any{"git": git}
+		if tag != "" {
+			raw["tag"] = tag
+		}
+		if branch != "" {
+			raw["branch"] = branch
+		}
+		if commit != "" {
+			raw["commit"] = commit
+		}
+		if p != "" {
+			raw["path"] = p
+		}
+		if inline {
+			raw["inline"] = true
+		}
+		return parseGitSource(git, raw)
+	}
+
+	// OCI
+	raw := map[string]any{"oci": oci}
+	if tag != "" {
+		raw["tag"] = tag
+	}
+	if digest != "" {
+		raw["digest"] = digest
+	}
+	if inline {
+		raw["inline"] = true
+	}
+	return parseOCISource(oci, raw)
+}
+
+// AliasFromSource derives a default alias from the source URL.
+func AliasFromSource(src Source) string {
+	switch src.Kind {
+	case SourceGit:
+		base := path.Base(src.Git)
+		return strings.TrimSuffix(base, ".git")
+	case SourceOCI:
+		parts := strings.Split(src.OCI, "/")
+		return parts[len(parts)-1]
+	}
+	return ""
 }

@@ -12,7 +12,6 @@ import (
 
 	"github.com/calebfaruki/impromptu/internal/lockfile"
 	"github.com/calebfaruki/impromptu/internal/oci"
-	"github.com/calebfaruki/impromptu/internal/promptfile"
 	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
@@ -53,7 +52,7 @@ func NewRegistryClient(baseURL string, verifier sigstore.Verifier) *RegistryClie
 // Resolve fetches a prompt from the registry, resolves the version, verifies
 // digest and signature, checks cooldown, and returns the result.
 func (r *RegistryClient) Resolve(ctx context.Context, ref string, force bool) (*ResolveResult, error) {
-	author, name, versionSpec, err := promptfile.ParseRef(ref)
+	author, name, versionSpec, err := parseRegistryRef(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +80,7 @@ func (r *RegistryClient) Resolve(ctx context.Context, ref string, force bool) (*
 
 	result := &ResolveResult{
 		Entry: lockfile.LockfileEntry{
-			Source: promptfile.SourceRegistry,
-			Ref:    ref,
+			Source: "registry",
 			Digest: matched.Digest,
 		},
 		Blob: blob,
@@ -170,6 +168,20 @@ func (r *RegistryClient) fetchBlob(ctx context.Context, digest string) ([]byte, 
 		return nil, fmt.Errorf("reading blob %s: %w", digest, err)
 	}
 	return data, nil
+}
+
+func parseRegistryRef(ref string) (author, name, version string, err error) {
+	atIdx := strings.LastIndex(ref, "@")
+	if atIdx < 0 {
+		return "", "", "", fmt.Errorf("ref %q missing @version", ref)
+	}
+	authorName := ref[:atIdx]
+	version = ref[atIdx+1:]
+	slashIdx := strings.Index(authorName, "/")
+	if slashIdx < 0 {
+		return "", "", "", fmt.Errorf("ref %q missing author/name", ref)
+	}
+	return authorName[:slashIdx], authorName[slashIdx+1:], version, nil
 }
 
 func matchVersion(versions []VersionInfo, spec string) (VersionInfo, error) {

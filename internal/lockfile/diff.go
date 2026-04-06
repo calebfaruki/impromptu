@@ -36,11 +36,7 @@ func sourceMatches(src promptfile.Source, entry LockfileEntry) bool {
 		return false
 	}
 	switch src.Kind {
-	case promptfile.SourceRegistry:
-		return src.Ref == entry.Ref
 	case promptfile.SourceGit:
-		// Compare intent fields only. Commit in the lockfile is the resolved
-		// SHA -- only compare if the Promptfile explicitly pins a commit.
 		if src.Git != entry.Git || src.Tag != entry.Tag ||
 			src.Branch != entry.Branch || src.Path != entry.Path {
 			return false
@@ -50,8 +46,6 @@ func sourceMatches(src promptfile.Source, entry LockfileEntry) bool {
 		}
 		return true
 	case promptfile.SourceOCI:
-		// Compare OCI registry and the ref the Promptfile declares.
-		// If Promptfile uses a tag, don't compare digests (lockfile resolves them).
 		if src.OCI != entry.OCI {
 			return false
 		}
@@ -62,8 +56,6 @@ func sourceMatches(src promptfile.Source, entry LockfileEntry) bool {
 			return false
 		}
 		return true
-	case promptfile.SourcePrivate:
-		return src.Registry == entry.Registry && src.Ref == entry.Ref
 	}
 	return false
 }

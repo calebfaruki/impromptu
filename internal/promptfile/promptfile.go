@@ -4,18 +4,13 @@ package promptfile
 type SourceKind string
 
 const (
-	SourceRegistry SourceKind = "registry"
-	SourceGit      SourceKind = "git"
-	SourceOCI      SourceKind = "oci"
-	SourcePrivate  SourceKind = "private"
+	SourceGit SourceKind = "git"
+	SourceOCI SourceKind = "oci"
 )
 
 // Source describes where a prompt dependency comes from.
 type Source struct {
 	Kind SourceKind
-
-	// Registry: "author/name@version"
-	Ref string
 
 	// Git
 	Git    string
@@ -29,8 +24,8 @@ type Source struct {
 	OCITag string
 	Digest string
 
-	// Private registry
-	Registry string
+	// Inline: single-file prompt placed directly in cwd
+	Inline bool
 }
 
 // Promptfile represents a parsed Promptfile.
