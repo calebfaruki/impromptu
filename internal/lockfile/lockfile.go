@@ -11,16 +11,18 @@ import (
 
 // LockfileEntry represents a resolved dependency.
 type LockfileEntry struct {
-	Name   string
-	Source promptfile.SourceKind
-	Git    string
-	Tag    string
-	Branch string
-	Commit string
-	Path   string
-	OCI    string
-	Digest string
-	Signer string
+	Name     string
+	Source   promptfile.SourceKind
+	Git      string
+	Tag      string
+	Branch   string
+	Commit   string
+	Path     string
+	OCI      string
+	Digest   string
+	Signer   string
+	Inline   bool
+	Filename string
 }
 
 // Lockfile represents a parsed Promptfile.lock.
@@ -36,16 +38,18 @@ type rawLockfile struct {
 }
 
 type rawLockEntry struct {
-	Name   string `toml:"name"`
-	Source string `toml:"source"`
-	Git    string `toml:"git,omitempty"`
-	Tag    string `toml:"tag,omitempty"`
-	Branch string `toml:"branch,omitempty"`
-	Commit string `toml:"commit,omitempty"`
-	Path   string `toml:"path,omitempty"`
-	OCI    string `toml:"oci,omitempty"`
-	Digest string `toml:"digest,omitempty"`
-	Signer string `toml:"signer,omitempty"`
+	Name     string `toml:"name"`
+	Source   string `toml:"source"`
+	Git      string `toml:"git,omitempty"`
+	Tag      string `toml:"tag,omitempty"`
+	Branch   string `toml:"branch,omitempty"`
+	Commit   string `toml:"commit,omitempty"`
+	Path     string `toml:"path,omitempty"`
+	OCI      string `toml:"oci,omitempty"`
+	Digest   string `toml:"digest,omitempty"`
+	Signer   string `toml:"signer,omitempty"`
+	Inline   bool   `toml:"inline,omitempty"`
+	Filename string `toml:"filename,omitempty"`
 }
 
 // ParseLockfile reads a Promptfile.lock from TOML bytes.
@@ -64,16 +68,18 @@ func ParseLockfile(data []byte) (*Lockfile, error) {
 	}
 	for _, r := range raw.Prompt {
 		lf.Entries[r.Name] = LockfileEntry{
-			Name:   r.Name,
-			Source: promptfile.SourceKind(r.Source),
-			Git:    r.Git,
-			Tag:    r.Tag,
-			Branch: r.Branch,
-			Commit: r.Commit,
-			Path:   r.Path,
-			OCI:    r.OCI,
-			Digest: r.Digest,
-			Signer: r.Signer,
+			Name:     r.Name,
+			Source:   promptfile.SourceKind(r.Source),
+			Git:      r.Git,
+			Tag:      r.Tag,
+			Branch:   r.Branch,
+			Commit:   r.Commit,
+			Path:     r.Path,
+			OCI:      r.OCI,
+			Digest:   r.Digest,
+			Signer:   r.Signer,
+			Inline:   r.Inline,
+			Filename: r.Filename,
 		}
 	}
 	return lf, nil
@@ -91,16 +97,18 @@ func (lf *Lockfile) Bytes() ([]byte, error) {
 	for _, name := range names {
 		e := lf.Entries[name]
 		entries = append(entries, rawLockEntry{
-			Name:   e.Name,
-			Source: string(e.Source),
-			Git:    e.Git,
-			Tag:    e.Tag,
-			Branch: e.Branch,
-			Commit: e.Commit,
-			Path:   e.Path,
-			OCI:    e.OCI,
-			Digest: e.Digest,
-			Signer: e.Signer,
+			Name:     e.Name,
+			Source:   string(e.Source),
+			Git:      e.Git,
+			Tag:      e.Tag,
+			Branch:   e.Branch,
+			Commit:   e.Commit,
+			Path:     e.Path,
+			OCI:      e.OCI,
+			Digest:   e.Digest,
+			Signer:   e.Signer,
+			Inline:   e.Inline,
+			Filename: e.Filename,
 		})
 	}
 

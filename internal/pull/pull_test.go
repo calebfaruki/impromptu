@@ -397,3 +397,153 @@ func TestPullGitSource(t *testing.T) {
 		t.Error("lockfile should contain commit SHA for git source")
 	}
 }
+
+// --- Inline pull tests ---
+
+func TestInlinePullSingleFile(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"CLAUDE.md": "# Claude Config\n",
+	}, "v1")
+
+	dir := t.TempDir()
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
+
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	result, err := InlinePull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	}, src, "claude")
+	if err != nil {
+		t.Fatalf("InlinePull: %v", err)
+	}
+	if len(result.Added) == 0 {
+		t.Error("expected dep added")
+	}
+
+	// File should be in cwd, not in a subdirectory
+	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.md")); err != nil {
+		t.Error("inline file should be in cwd")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "claude")); !os.IsNotExist(err) {
+		t.Error("inline should NOT create a subdirectory")
+	}
+
+	// Lockfile should have inline + filename
+	lfData, _ := os.ReadFile(filepath.Join(dir, "Promptfile.lock"))
+	if !strings.Contains(string(lfData), "inline") {
+		t.Error("lockfile should contain inline flag")
+	}
+	if !strings.Contains(string(lfData), "CLAUDE.md") {
+		t.Error("lockfile should contain filename")
+	}
+}
+
+func TestInlinePullMultiFileError(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"01-context.md":      "# Context\n",
+		"02-instructions.md": "# Instructions\n",
+	}, "v1")
+
+	dir := t.TempDir()
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
+
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	_, err := InlinePull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	}, src, "multi")
+	if err == nil {
+		t.Fatal("expected error for multi-file inline")
+	}
+	if !strings.Contains(err.Error(), "single-file") {
+		t.Errorf("error should mention single-file: %v", err)
+	}
+}
+
+func TestInlinePullCollisionDenied(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"CLAUDE.md": "# New\n",
+	}, "v1")
+
+	dir := t.TempDir()
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Existing\n"), 0644)
+
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	_, err := InlinePull(context.Background(), Config{
+		Dir: dir, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+		Confirm:  func(s string) bool { return false },
+	}, src, "claude")
+	if err == nil {
+		t.Fatal("expected error when collision denied")
+	}
+	if !strings.Contains(err.Error(), "cancelled") {
+		t.Errorf("error should mention cancelled: %v", err)
+	}
+
+	// Original file should be unchanged
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if !strings.Contains(string(data), "Existing") {
+		t.Error("original file should be preserved")
+	}
+}
+
+func TestInlinePullCollisionYes(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"CLAUDE.md": "# New Content\n",
+	}, "v1")
+
+	dir := t.TempDir()
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Old\n"), 0644)
+
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	_, err := InlinePull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	}, src, "claude")
+	if err != nil {
+		t.Fatalf("InlinePull with --yes: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if !strings.Contains(string(data), "New Content") {
+		t.Error("file should be overwritten with new content")
+	}
+}
+
+func TestPullWithoutInlineAfterInline(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"CLAUDE.md": "# Claude\n",
+	}, "v1")
+
+	dir := t.TempDir()
+
+	// First: inline pull
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	_, err := InlinePull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	}, src, "claude")
+	if err != nil {
+		t.Fatalf("first inline pull: %v", err)
+	}
+
+	// Now modify Promptfile to remove inline flag (simulate pulling without --inline)
+	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"" + repoDir + "\"\ntag = \"v1\"\n"
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
+
+	// Pull again without inline -- should error
+	_, err = Pull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	})
+	if err == nil {
+		t.Fatal("expected error when pulling without --inline after inline")
+	}
+	if !strings.Contains(err.Error(), "inline") {
+		t.Errorf("error should mention inline: %v", err)
+	}
+}

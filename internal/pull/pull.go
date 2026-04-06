@@ -119,11 +119,56 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 
 	// Write resolved files
 	for name, blob := range newBlobs {
-		dir := filepath.Join(cfg.Dir, name)
-		os.RemoveAll(dir)
-		os.MkdirAll(dir, 0755)
-		if err := internaloci.Unpackage(bytes.NewReader(blob), dir); err != nil {
-			return nil, fmt.Errorf("extracting %s: %w", name, err)
+		src := pf.Prompts[name]
+		entry := newEntries[name]
+
+		// Check for inline/non-inline conflict with existing lockfile entry
+		if existingEntry, ok := lf.Entries[name]; ok && existingEntry.Inline && !src.Inline {
+			return nil, fmt.Errorf("%s is already pulled as inline; specify --inline or remove it first", name)
+		}
+
+		if src.Inline {
+			// Inline: extract to temp, verify single file, place in cwd
+			tmpDir, err := os.MkdirTemp("", "impromptu-inline-*")
+			if err != nil {
+				return nil, fmt.Errorf("creating temp dir: %w", err)
+			}
+			if err := internaloci.Unpackage(bytes.NewReader(blob), tmpDir); err != nil {
+				os.RemoveAll(tmpDir)
+				return nil, fmt.Errorf("extracting %s: %w", name, err)
+			}
+			files, _ := os.ReadDir(tmpDir)
+			if len(files) != 1 {
+				os.RemoveAll(tmpDir)
+				return nil, fmt.Errorf("%s: inline only works with single-file prompts (found %d files)", name, len(files))
+			}
+			filename := files[0].Name()
+			targetPath := filepath.Join(cfg.Dir, filename)
+
+			// Collision detection
+			if _, err := os.Stat(targetPath); err == nil {
+				if !cfg.Yes {
+					if cfg.Confirm == nil || !cfg.Confirm(fmt.Sprintf("%s already exists. Replace? [y/N] ", filename)) {
+						os.RemoveAll(tmpDir)
+						return nil, fmt.Errorf("pull cancelled: %s already exists", filename)
+					}
+				}
+			}
+
+			data, _ := os.ReadFile(filepath.Join(tmpDir, filename))
+			os.WriteFile(targetPath, data, 0644)
+			os.RemoveAll(tmpDir)
+
+			entry.Inline = true
+			entry.Filename = filename
+			newEntries[name] = entry
+		} else {
+			dir := filepath.Join(cfg.Dir, name)
+			os.RemoveAll(dir)
+			os.MkdirAll(dir, 0755)
+			if err := internaloci.Unpackage(bytes.NewReader(blob), dir); err != nil {
+				return nil, fmt.Errorf("extracting %s: %w", name, err)
+			}
 		}
 	}
 

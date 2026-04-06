@@ -34,15 +34,18 @@ func Remove(dir string, alias string) error {
 		return fmt.Errorf("writing Promptfile: %w", err)
 	}
 
-	// Delete on-disk directory
-	os.RemoveAll(filepath.Join(dir, alias))
-
-	// Update lockfile
+	// Delete on-disk files
 	lfPath := filepath.Join(dir, "Promptfile.lock")
 	lfData, err := os.ReadFile(lfPath)
 	if err == nil {
 		lf, err := lockfile.ParseLockfile(lfData)
 		if err == nil {
+			entry, ok := lf.Entries[alias]
+			if ok && entry.Inline && entry.Filename != "" {
+				os.Remove(filepath.Join(dir, entry.Filename))
+			} else {
+				os.RemoveAll(filepath.Join(dir, alias))
+			}
 			delete(lf.Entries, alias)
 			lfBytes, err := lf.Bytes()
 			if err == nil {

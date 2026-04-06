@@ -297,3 +297,53 @@ func TestUpdateAllDeps(t *testing.T) {
 		t.Errorf("expected 2 skip warnings, got %d", len(result.Warnings))
 	}
 }
+
+func TestRemoveInlineDep(t *testing.T) {
+	dir := t.TempDir()
+
+	// Set up Promptfile with an inline entry
+	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"https://github.com/alice/claude-md\"\ntag = \"v1\"\ninline = true\n"
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
+
+	// Set up lockfile with inline + filename
+	lf := &lockfile.Lockfile{
+		Version: 1,
+		Entries: map[string]lockfile.LockfileEntry{
+			"claude": {
+				Name:     "claude",
+				Source:   promptfile.SourceGit,
+				Git:      "https://github.com/alice/claude-md",
+				Tag:      "v1",
+				Inline:   true,
+				Filename: "CLAUDE.md",
+			},
+		},
+	}
+	lfData, _ := lf.Bytes()
+	os.WriteFile(filepath.Join(dir, "Promptfile.lock"), lfData, 0644)
+
+	// Create the inline file in cwd
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"), 0644)
+
+	// Remove
+	if err := Remove(dir, "claude"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// File should be deleted from cwd
+	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Error("inline file should be deleted from cwd")
+	}
+
+	// Promptfile entry gone
+	pfData, _ := os.ReadFile(filepath.Join(dir, "Promptfile"))
+	if strings.Contains(string(pfData), "claude") {
+		t.Error("Promptfile should not contain claude")
+	}
+
+	// Lockfile entry gone
+	lfData2, _ := os.ReadFile(filepath.Join(dir, "Promptfile.lock"))
+	if strings.Contains(string(lfData2), "claude") {
+		t.Error("lockfile should not contain claude")
+	}
+}
