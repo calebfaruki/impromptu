@@ -204,11 +204,14 @@ func runPull() {
 		}
 	}
 
+	indexURL := envOr("IMPROMPTU_INDEX", "http://localhost:8080")
 	cfg := pull.Config{
 		Dir:      dir,
 		Force:    force,
 		Yes:      yes,
+		IndexURL: indexURL,
 		Verifier: &sigstore.FakeVerifier{},
+		Searcher: sigstore.NewFakeSearcher(),
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
 			fmt.Print("Continue? [y/N] ")

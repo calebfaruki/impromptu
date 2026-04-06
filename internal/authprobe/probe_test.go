@@ -8,28 +8,28 @@ import (
 )
 
 func TestParseGitHubHTTPS(t *testing.T) {
-	host, owner, repo := parseSourceURL("https://github.com/alice/coder")
+	host, owner, repo := ParseSourceURL("https://github.com/alice/coder")
 	if host != "github.com" || owner != "alice" || repo != "coder" {
 		t.Errorf("got %s/%s/%s", host, owner, repo)
 	}
 }
 
 func TestParseGitHubSSH(t *testing.T) {
-	host, owner, repo := parseSourceURL("git@github.com:alice/coder.git")
+	host, owner, repo := ParseSourceURL("git@github.com:alice/coder.git")
 	if host != "github.com" || owner != "alice" || repo != "coder" {
 		t.Errorf("got %s/%s/%s", host, owner, repo)
 	}
 }
 
 func TestParseGHCR(t *testing.T) {
-	host, owner, repo := parseSourceURL("ghcr.io/alice/reviewer")
+	host, owner, repo := ParseSourceURL("ghcr.io/alice/reviewer")
 	if host != "ghcr.io" || owner != "alice" || repo != "reviewer" {
 		t.Errorf("got %s/%s/%s", host, owner, repo)
 	}
 }
 
 func TestParseCodeberg(t *testing.T) {
-	host, owner, repo := parseSourceURL("https://codeberg.org/alice/prompts")
+	host, owner, repo := ParseSourceURL("https://codeberg.org/alice/prompts")
 	if host != "codeberg.org" || owner != "alice" || repo != "prompts" {
 		t.Errorf("got %s/%s/%s", host, owner, repo)
 	}

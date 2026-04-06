@@ -22,7 +22,9 @@ type Config struct {
 	Yes         bool
 	Confirm     func(summary string) bool
 	RegistryURL string
+	IndexURL    string
 	Verifier    sigstore.Verifier
+	Searcher    sigstore.Searcher
 }
 
 // Result reports what happened during the pull.
@@ -90,6 +92,16 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 		newEntries[name] = entry
 		newBlobs[name] = blob
 		result.Warnings = append(result.Warnings, warnings...)
+
+		// Auto-index: discover Rekor signature and submit to index if signed + public
+		sourceURL := src.Git
+		if src.Kind == promptfile.SourceOCI {
+			sourceURL = src.OCI
+		}
+		if cfg.Searcher != nil {
+			indexWarnings := MaybeIndex(ctx, cfg.IndexURL, sourceURL, entry.Digest, cfg.Searcher)
+			result.Warnings = append(result.Warnings, indexWarnings...)
+		}
 	}
 	result.Added = diff.Added
 	result.Removed = diff.Removed

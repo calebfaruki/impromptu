@@ -15,3 +15,10 @@ type Verifier interface {
 	// the expected digest. Returns the entry with signer identity on success.
 	Verify(ctx context.Context, logIndex int64, expectedDigest string) (*RekorEntry, error)
 }
+
+// Searcher discovers Sigstore signatures in Rekor by artifact digest.
+type Searcher interface {
+	// Search finds a Rekor entry for the given digest.
+	// Returns the entry if found, or an error if no signature exists.
+	Search(ctx context.Context, digest string) (*RekorEntry, error)
+}

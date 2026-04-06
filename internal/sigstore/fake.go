@@ -41,3 +41,33 @@ func (f *FakeVerifier) Verify(_ context.Context, logIndex int64, expectedDigest 
 
 	return entry, nil
 }
+
+// FakeSearcher is a Searcher for testing. Stores entries keyed by digest.
+type FakeSearcher struct {
+	Err     error
+	entries map[string]*RekorEntry
+}
+
+// NewFakeSearcher creates a FakeSearcher with no entries.
+func NewFakeSearcher() *FakeSearcher {
+	return &FakeSearcher{entries: make(map[string]*RekorEntry)}
+}
+
+// AddEntry registers a Rekor entry discoverable by digest.
+func (f *FakeSearcher) AddEntry(entry RekorEntry) {
+	if f.entries == nil {
+		f.entries = make(map[string]*RekorEntry)
+	}
+	f.entries[entry.Digest] = &entry
+}
+
+func (f *FakeSearcher) Search(_ context.Context, digest string) (*RekorEntry, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	entry, ok := f.entries[digest]
+	if !ok {
+		return nil, fmt.Errorf("no rekor entry found for digest %s", digest)
+	}
+	return entry, nil
+}

@@ -24,7 +24,7 @@ func Probe(ctx context.Context, sourceURL string) (Visibility, error) {
 
 // ProbeWithClient allows injecting a custom HTTP client (for testing).
 func ProbeWithClient(ctx context.Context, sourceURL string, client *http.Client) (Visibility, error) {
-	host, owner, repo := parseSourceURL(sourceURL)
+	host, owner, repo := ParseSourceURL(sourceURL)
 
 	switch host {
 	case "github.com":
@@ -74,10 +74,10 @@ func probeOCI(ctx context.Context, client *http.Client, url string) (Visibility,
 	return Private, nil
 }
 
-// parseSourceURL extracts host, owner, and repo from a source URL.
+// ParseSourceURL extracts host, owner, and repo from a source URL.
 // Handles: https://github.com/owner/repo, git@github.com:owner/repo.git,
 // ghcr.io/owner/image
-func parseSourceURL(sourceURL string) (host, owner, repo string) {
+func ParseSourceURL(sourceURL string) (host, owner, repo string) {
 	// Strip scheme
 	url := sourceURL
 	url = strings.TrimPrefix(url, "https://")
