@@ -130,7 +130,7 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("writing lockfile: %w", err)
 	}
-	if err := os.WriteFile(lfPath, lfBytes, 0644); err != nil {
+	if err := atomicWrite(lfPath, lfBytes); err != nil {
 		return nil, fmt.Errorf("writing lockfile: %w", err)
 	}
 
@@ -251,4 +251,23 @@ func buildSummary(added, removed []string, entries map[string]lockfile.LockfileE
 		}
 	}
 	return b.String()
+}
+
+func atomicWrite(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".lockfile-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, path)
 }

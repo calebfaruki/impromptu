@@ -3,11 +3,13 @@ package web
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/calebfaruki/impromptu/internal/auth"
@@ -164,4 +166,108 @@ func extractZip(data []byte, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// HandlePublishAPI handles CLI publish via Bearer token auth.
+// Accepts a tar archive (not zip), pre-signed signature bundle, and returns JSON.
+func (s *Server) HandlePublishAPI(w http.ResponseWriter, r *http.Request) {
+	user := auth.BearerAuth(r, s.sessions)
+	if user == nil {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	ctx := r.Context()
+
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	version := r.FormValue("version")
+	if name == "" || version == "" {
+		http.Error(w, `{"error":"name and version are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("archive")
+	if err != nil {
+		http.Error(w, `{"error":"missing archive"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	tarData, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, `{"error":"reading archive"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Content check: unpack tar to temp, check, repack not needed since CLI already checked
+	tmpDir, err := os.MkdirTemp("", "impromptu-api-publish-*")
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := oci.Unpackage(bytes.NewReader(tarData), tmpDir); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"invalid archive: %s"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	violations, err := contentcheck.CheckDirectory(tmpDir)
+	if err != nil {
+		http.Error(w, `{"error":"content check error"}`, http.StatusInternalServerError)
+		return
+	}
+	if len(violations) > 0 {
+		http.Error(w, `{"error":"content check failed"}`, http.StatusBadRequest)
+		return
+	}
+
+	digest := oci.ComputeDigest(tarData)
+
+	// Find or create prompt
+	author, err := s.db.FindAuthor(ctx, user.Username)
+	if err != nil {
+		http.Error(w, `{"error":"author not found"}`, http.StatusInternalServerError)
+		return
+	}
+	promptID, err := s.db.InsertPrompt(ctx, author.ID, name, description)
+	if err != nil {
+		existing, findErr := s.db.FindPromptByAuthorName(ctx, author.ID, name)
+		if findErr != nil {
+			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+			return
+		}
+		promptID = existing.ID
+	}
+
+	versionID, err := s.db.InsertVersion(ctx, promptID, version, digest.String())
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			http.Error(w, fmt.Sprintf(`{"error":"version %s already exists"}`, version), http.StatusConflict)
+			return
+		}
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.blobs.Put(ctx, digest, tarData); err != nil {
+		http.Error(w, `{"error":"storing blob"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Store client-provided signature if present
+	sigBundle := r.FormValue("signature_bundle")
+	rekorIdx := r.FormValue("rekor_log_index")
+	if sigBundle != "" {
+		idx, _ := strconv.ParseInt(rekorIdx, 10, 64)
+		s.db.SetVersionSignature(ctx, versionID, sigBundle, idx)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"digest":  digest.String(),
+		"name":    name,
+		"version": version,
+		"author":  user.Username,
+	})
 }

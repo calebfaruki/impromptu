@@ -92,6 +92,7 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/api/v1/blobs/{digest}", s.HandleBlobDownload)
 	r.Get("/api/v1/prompts/{author}/{name}", s.HandlePromptAPI)
 	r.Get("/api/v1/prompts/{author}/{name}/versions", s.HandleVersionsAPI)
+	r.Post("/api/v1/publish", s.HandlePublishAPI)
 
 	// Authenticated
 	r.Group(func(r chi.Router) {

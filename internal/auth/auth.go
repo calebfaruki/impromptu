@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -49,5 +51,23 @@ var (
 	ErrSessionExpired   = errors.New("session expired")
 	ErrInvalidSignature = errors.New("invalid cookie signature")
 )
+
+// BearerAuth extracts a session token from the Authorization header
+// and returns the authenticated user, or nil if not authenticated.
+func BearerAuth(r *http.Request, sessions *SessionStore) *AuthenticatedUser {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return nil
+	}
+	token := strings.TrimPrefix(header, "Bearer ")
+	info, err := sessions.Find(r.Context(), token)
+	if err != nil {
+		return nil
+	}
+	return &AuthenticatedUser{
+		AuthorID: info.Session.AuthorID,
+		Username: info.Username,
+	}
+}
 
 const sessionDuration = 30 * 24 * time.Hour

@@ -672,3 +672,85 @@ func TestPublishRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// --- API Publish tests ---
+
+func apiPublishRequest(t *testing.T, srv *Server, db *index.DB, tarData []byte, name, version string) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx := context.Background()
+
+	authorID, err := db.InsertAuthor(ctx, "apiuser", "API User", "", "")
+	if err != nil {
+		a, _ := db.FindAuthor(ctx, "apiuser")
+		authorID = a.ID
+	}
+
+	session, err := srv.sessions.Create(ctx, authorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	mw.WriteField("name", name)
+	mw.WriteField("description", "test")
+	mw.WriteField("version", version)
+
+	fw, _ := mw.CreateFormFile("archive", "prompt.tar")
+	fw.Write(tarData)
+	mw.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/publish", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+session.Token)
+
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAPIPublishValid(t *testing.T) {
+	srv, db, _ := testServer(t)
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Test\n"), 0644)
+	tarData, _ := oci.PackageBytes(dir)
+
+	rec := apiPublishRequest(t, srv, db, tarData, "api-prompt", "1.0.0")
+	if rec.Code != http.StatusOK {
+		t.Errorf("got %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "sha256:") {
+		t.Error("response should contain digest")
+	}
+	if !strings.Contains(body, "api-prompt") {
+		t.Error("response should contain name")
+	}
+}
+
+func TestAPIPublishNoAuth(t *testing.T) {
+	srv, _, _ := testServer(t)
+
+	req := httptest.NewRequest("POST", "/api/v1/publish", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("got %d, want 401", rec.Code)
+	}
+}
+
+func TestAPIPublishReturnsJSON(t *testing.T) {
+	srv, db, _ := testServer(t)
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Test\n"), 0644)
+	tarData, _ := oci.PackageBytes(dir)
+
+	rec := apiPublishRequest(t, srv, db, tarData, "json-test", "1.0.0")
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("got content-type %q, want application/json", ct)
+	}
+}

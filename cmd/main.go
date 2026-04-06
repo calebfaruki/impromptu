@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/calebfaruki/impromptu/internal/auth"
+	"github.com/calebfaruki/impromptu/internal/cliauth"
 	"github.com/calebfaruki/impromptu/internal/commands"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
@@ -395,6 +396,18 @@ func runPublish() {
 	}
 
 	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+
+	// If no token provided, login via browser
+	if token == "" {
+		fmt.Println("Opening browser for authentication...")
+		var err error
+		token, err = cliauth.Login(context.Background(), registryURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: login failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Authenticated.")
+	}
 
 	result, err := publish.Publish(context.Background(), publish.PublishConfig{
 		Dir:         dir,

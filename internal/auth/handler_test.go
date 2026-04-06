@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -206,5 +207,66 @@ func TestHandleCallbackCreatesAndReusesAuthor(t *testing.T) {
 
 	if callCount != 2 {
 		t.Errorf("EnsureAuthor called %d times, want 2", callCount)
+	}
+}
+
+func TestHandleLoginWithCLIRedirect(t *testing.T) {
+	h := setupHandlerTest(t)
+
+	req := httptest.NewRequest("GET", "/login?cli_redirect=http://localhost:9999/callback", nil)
+	rec := httptest.NewRecorder()
+	h.HandleLogin(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusFound)
+	}
+
+	// State cookie should contain the cli_redirect
+	found := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "oauth_state" && strings.Contains(c.Value, "|http://localhost:9999/callback") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("state cookie should contain cli_redirect")
+	}
+}
+
+func TestHandleCallbackWithCLIRedirect(t *testing.T) {
+	h := setupHandlerTest(t)
+
+	state := "test-state"
+	cliRedirect := "http://localhost:9999/callback"
+	stateValue := state + "|" + cliRedirect
+
+	req := httptest.NewRequest("GET", "/callback?state="+state+"&code=test-code", nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: stateValue})
+	rec := httptest.NewRecorder()
+	h.HandleCallback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusFound)
+	}
+
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, "http://localhost:9999/callback?token=") {
+		t.Errorf("expected redirect to CLI localhost with token, got %q", loc)
+	}
+
+	// Extract token from redirect URL
+	tokenStart := strings.Index(loc, "token=")
+	if tokenStart < 0 {
+		t.Fatal("no token in redirect URL")
+	}
+	token := loc[tokenStart+6:]
+	if len(token) != 64 {
+		t.Errorf("token length: got %d, want 64", len(token))
+	}
+
+	// Token should be valid in session store
+	_, err := h.Sessions.Find(context.Background(), token)
+	if err != nil {
+		t.Errorf("token should be valid session: %v", err)
 	}
 }

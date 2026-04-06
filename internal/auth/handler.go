@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Handlers provides HTTP handlers for the OAuth flow.
@@ -18,6 +19,8 @@ type Handlers struct {
 }
 
 // HandleLogin initiates the GitHub OAuth flow.
+// If cli_redirect query param is present, the callback will redirect to that
+// URL with a session token instead of setting a cookie (for CLI login).
 func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := GenerateState()
 	if err != nil {
@@ -25,9 +28,15 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Encode cli_redirect into state cookie if present
+	stateValue := state
+	if cliRedirect := r.URL.Query().Get("cli_redirect"); cliRedirect != "" {
+		stateValue = state + "|" + cliRedirect
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.StateCookie,
-		Value:    state,
+		Value:    stateValue,
 		Path:     "/",
 		MaxAge:   600,
 		HttpOnly: true,
@@ -40,18 +49,26 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 // HandleCallback completes the OAuth flow after GitHub redirects back.
 func (h *Handlers) HandleCallback(w http.ResponseWriter, r *http.Request) {
-	// Verify state
 	stateCookie, err := r.Cookie(h.StateCookie)
 	if err != nil {
 		http.Error(w, "missing state cookie", http.StatusForbidden)
 		return
 	}
-	if r.URL.Query().Get("state") != stateCookie.Value {
+
+	// Extract state and optional cli_redirect from cookie
+	cookieValue := stateCookie.Value
+	state := cookieValue
+	var cliRedirect string
+	if idx := strings.Index(cookieValue, "|"); idx >= 0 {
+		state = cookieValue[:idx]
+		cliRedirect = cookieValue[idx+1:]
+	}
+
+	if r.URL.Query().Get("state") != state {
 		http.Error(w, "state mismatch", http.StatusForbidden)
 		return
 	}
 
-	// Clear state cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:   h.StateCookie,
 		Path:   "/",
@@ -82,6 +99,17 @@ func (h *Handlers) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// CLI login: redirect to localhost with raw token
+	if cliRedirect != "" {
+		sep := "?"
+		if strings.Contains(cliRedirect, "?") {
+			sep = "&"
+		}
+		http.Redirect(w, r, cliRedirect+sep+"token="+session.Token, http.StatusFound)
+		return
+	}
+
+	// Web login: set cookie and redirect to dashboard
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.CookieName,
 		Value:    h.Signer.Sign(session.Token),
