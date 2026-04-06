@@ -1,6 +1,7 @@
 package contentcheck
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -172,5 +173,66 @@ func TestCheckDirectoryNotFound(t *testing.T) {
 	_, err := CheckDirectory("/nonexistent/directory")
 	if err == nil {
 		t.Error("expected error for nonexistent directory, got nil")
+	}
+}
+
+func TestFileCountAtLimit(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 100; i++ {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("%03d.md", i)), []byte("# Test\n"), 0644)
+	}
+	violations, err := CheckDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range violations {
+		if v.Kind == KindLimit {
+			t.Errorf("100 files should be accepted, got limit violation: %s", v.Reason)
+		}
+	}
+}
+
+func TestFileCountOverLimit(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 101; i++ {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("%03d.md", i)), []byte("# Test\n"), 0644)
+	}
+	violations, err := CheckDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, v := range violations {
+		if v.Kind == KindLimit {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected limit violation for 101 files")
+	}
+}
+
+func TestTotalSizeOverLimit(t *testing.T) {
+	dir := t.TempDir()
+	// Create a few large files that exceed 10 MB total
+	bigContent := make([]byte, 6*1024*1024) // 6 MB each
+	for i := range bigContent {
+		bigContent[i] = '#'
+	}
+	os.WriteFile(filepath.Join(dir, "a.md"), bigContent, 0644)
+	os.WriteFile(filepath.Join(dir, "b.md"), bigContent, 0644) // 12 MB total
+
+	violations, err := CheckDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, v := range violations {
+		if v.Kind == KindLimit {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected limit violation for total size > 10 MB")
 	}
 }

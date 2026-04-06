@@ -268,3 +268,50 @@ func TestUnpackageRejectsNonRegular(t *testing.T) {
 		t.Error("expected error for directory entry in tar, got nil")
 	}
 }
+
+func TestUnpackageRejectsPathTraversal(t *testing.T) {
+	tests := []struct {
+		name    string
+		tarName string
+	}{
+		{"parent escape", "../etc/passwd"},
+		{"nested escape", "foo/../../bar"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			tw.WriteHeader(&tar.Header{
+				Name:     tt.tarName,
+				Size:     5,
+				Typeflag: tar.TypeReg,
+				Mode:     0644,
+			})
+			tw.Write([]byte("data\n"))
+			tw.Close()
+
+			err := Unpackage(&buf, t.TempDir())
+			if err == nil {
+				t.Errorf("expected error for path traversal %q", tt.tarName)
+			}
+		})
+	}
+}
+
+func TestUnpackageAcceptsCleanPath(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tw.WriteHeader(&tar.Header{
+		Name:     "clean-file.md",
+		Size:     6,
+		Typeflag: tar.TypeReg,
+		Mode:     0644,
+	})
+	tw.Write([]byte("clean\n"))
+	tw.Close()
+
+	err := Unpackage(&buf, t.TempDir())
+	if err != nil {
+		t.Errorf("clean path should be accepted: %v", err)
+	}
+}

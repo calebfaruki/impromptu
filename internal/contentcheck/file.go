@@ -26,5 +26,6 @@ func CheckFile(path string, relPath string) ([]Violation, error) {
 	var violations []Violation
 	violations = append(violations, CheckUnicode(content, relPath)...)
 	violations = append(violations, CheckHTML(content, relPath)...)
+	violations = append(violations, CheckFrontmatter(content, relPath)...)
 	return violations, nil
 }

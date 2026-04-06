@@ -6,12 +6,14 @@ import "fmt"
 type Kind string
 
 const (
-	KindUnicode  Kind = "unicode"
-	KindHTML     Kind = "html"
-	KindFiletype Kind = "filetype"
-	KindSymlink  Kind = "symlink"
-	KindBinary   Kind = "binary"
-	KindEmpty    Kind = "empty"
+	KindUnicode     Kind = "unicode"
+	KindHTML        Kind = "html"
+	KindFiletype    Kind = "filetype"
+	KindSymlink     Kind = "symlink"
+	KindBinary      Kind = "binary"
+	KindEmpty       Kind = "empty"
+	KindLimit       Kind = "limit"
+	KindFrontmatter Kind = "frontmatter"
 )
 
 // Violation describes a single content check failure.

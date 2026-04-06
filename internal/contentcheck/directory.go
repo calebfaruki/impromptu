@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	maxFileCount = 100
+	maxTotalSize = 10 * 1024 * 1024 // 10 MB
+)
+
 // CheckDirectory validates a directory of markdown files.
 // Returns violations for content problems and an error for infrastructure failures.
 func CheckDirectory(dir string) ([]Violation, error) {
@@ -17,17 +22,17 @@ func CheckDirectory(dir string) ([]Violation, error) {
 
 	var violations []Violation
 	foundMD := false
+	mdCount := 0
+	var totalSize int64
 
 	for _, entry := range entries {
 		name := entry.Name()
 		fullPath := filepath.Join(dir, name)
 
-		// Skip hidden files (e.g. .gitkeep)
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
-		// Check for symlinks via Lstat
 		info, err := os.Lstat(fullPath)
 		if err != nil {
 			return nil, fmt.Errorf("stat %s: %w", name, err)
@@ -41,12 +46,10 @@ func CheckDirectory(dir string) ([]Violation, error) {
 			continue
 		}
 
-		// Skip subdirectories
 		if entry.IsDir() {
 			continue
 		}
 
-		// Check file extension
 		if !strings.HasSuffix(strings.ToLower(name), ".md") {
 			violations = append(violations, Violation{
 				File:   name,
@@ -56,12 +59,30 @@ func CheckDirectory(dir string) ([]Violation, error) {
 			continue
 		}
 
+		mdCount++
+		totalSize += info.Size()
 		foundMD = true
 		fileViolations, err := CheckFile(fullPath, name)
 		if err != nil {
 			return nil, err
 		}
 		violations = append(violations, fileViolations...)
+	}
+
+	if mdCount > maxFileCount {
+		violations = append(violations, Violation{
+			File:   dir,
+			Kind:   KindLimit,
+			Reason: fmt.Sprintf("too many .md files: %d (max %d)", mdCount, maxFileCount),
+		})
+	}
+
+	if totalSize > maxTotalSize {
+		violations = append(violations, Violation{
+			File:   dir,
+			Kind:   KindLimit,
+			Reason: fmt.Sprintf("total .md size %d bytes exceeds limit of %d bytes", totalSize, maxTotalSize),
+		})
 	}
 
 	if !foundMD && len(violations) == 0 {

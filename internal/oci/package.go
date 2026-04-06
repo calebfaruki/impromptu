@@ -96,6 +96,9 @@ func Unpackage(r io.Reader, dir string) error {
 		if hdr.Typeflag != tar.TypeReg {
 			return fmt.Errorf("unexpected entry type %d for %s: only regular files allowed", hdr.Typeflag, hdr.Name)
 		}
+		if strings.Contains(filepath.Clean(hdr.Name), "..") {
+			return fmt.Errorf("path traversal in tar entry: %s", hdr.Name)
+		}
 
 		data, err := io.ReadAll(tr)
 		if err != nil {
@@ -124,6 +127,9 @@ func UnpackageToMap(r io.Reader) (map[string]string, error) {
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("unexpected entry type for %s", hdr.Name)
+		}
+		if strings.Contains(filepath.Clean(hdr.Name), "..") {
+			return nil, fmt.Errorf("path traversal in tar entry: %s", hdr.Name)
 		}
 		data, err := io.ReadAll(tr)
 		if err != nil {
