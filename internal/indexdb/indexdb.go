@@ -97,6 +97,32 @@ func (d *DB) SearchIndex(ctx context.Context, query string, limit int) ([]IndexE
 	return results, rows.Err()
 }
 
+// FindBySourceURL returns all entries matching the given source URL.
+func (d *DB) FindBySourceURL(ctx context.Context, sourceURL string) ([]IndexEntry, error) {
+	rows, err := d.db.QueryContext(ctx,
+		`SELECT id, source_url, digest, signer_identity, rekor_log_index, indexed_at
+		 FROM indexed_prompts
+		 WHERE source_url = ?
+		 ORDER BY indexed_at DESC`,
+		sourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("finding by source url: %w", err)
+	}
+	defer rows.Close()
+
+	var results []IndexEntry
+	for rows.Next() {
+		var e IndexEntry
+		var indexedAt string
+		if err := rows.Scan(&e.ID, &e.SourceURL, &e.Digest, &e.SignerIdentity, &e.RekorLogIndex, &indexedAt); err != nil {
+			return nil, fmt.Errorf("scanning index entry: %w", err)
+		}
+		e.IndexedAt, _ = time.Parse("2006-01-02T15:04:05Z", indexedAt)
+		results = append(results, e)
+	}
+	return results, rows.Err()
+}
+
 func sanitizeQuery(q string) string {
 	words := splitWords(q)
 	var out []string

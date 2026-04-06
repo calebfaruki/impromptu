@@ -8,7 +8,7 @@ import (
 // HandleSearch renders the HTML search results page.
 func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	results, _ := s.db.SearchPrompts(r.Context(), q, 20, 0)
+	results, _ := s.idx.SearchIndex(r.Context(), q, 20)
 	s.render(w, r, "search.html", http.StatusOK, map[string]any{
 		"Query":   q,
 		"Results": results,
@@ -18,7 +18,7 @@ func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 // HandleSearchAPI returns search results as JSON.
 func (s *Server) HandleSearchAPI(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	results, err := s.db.SearchPrompts(r.Context(), q, 20, 0)
+	results, err := s.idx.SearchIndex(r.Context(), q, 20)
 	if err != nil {
 		http.Error(w, "search error", http.StatusInternalServerError)
 		return

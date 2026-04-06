@@ -11,12 +11,6 @@
     <header>
         <nav>
             <a href="/">Impromptu</a>
-            {{ if .User }}
-                <a href="/dashboard/prompts">Dashboard</a>
-                <a href="/logout">Log out</a>
-            {{ else }}
-                <a href="/login">Log in with GitHub</a>
-            {{ end }}
         </nav>
     </header>
     <main id="main">

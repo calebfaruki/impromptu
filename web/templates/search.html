@@ -10,8 +10,9 @@
 <ul class="prompt-list">
     {{ range .Results }}
     <li>
-        <a href="/{{ .Author }}/{{ .Name }}">{{ .Author }}/{{ .Name }}</a>
-        {{ if .Description }}<br><span class="meta">{{ .Description }}</span>{{ end }}
+        <a href="{{ .SourceURL }}">{{ .SourceURL }}</a>
+        {{ if .SignerIdentity }}<br><span class="meta">Signed by {{ .SignerIdentity }}</span>{{ end }}
+        <br><span class="meta">Indexed {{ .IndexedAt.Format "2006-01-02" }}</span>
     </li>
     {{ end }}
 </ul>

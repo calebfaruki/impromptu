@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,17 +10,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/calebfaruki/impromptu/internal/auth"
-	"github.com/calebfaruki/impromptu/internal/cliauth"
 	"github.com/calebfaruki/impromptu/internal/commands"
 	"github.com/calebfaruki/impromptu/internal/contentcheck"
 	"github.com/calebfaruki/impromptu/internal/index"
+	"github.com/calebfaruki/impromptu/internal/indexdb"
 	"github.com/calebfaruki/impromptu/internal/promptfile"
-	"github.com/calebfaruki/impromptu/internal/publish"
 	"github.com/calebfaruki/impromptu/internal/pull"
-	"github.com/calebfaruki/impromptu/internal/registry"
 	"github.com/calebfaruki/impromptu/internal/sigstore"
 	"github.com/calebfaruki/impromptu/web"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -50,8 +47,6 @@ func main() {
 		runUpdate()
 	case "remove":
 		runRemove()
-	case "publish":
-		runPublish()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -79,92 +74,44 @@ func runServe(dev bool) {
 	addr := ":" + port
 
 	// Database
-	var db *index.DB
-	var err error
+	var dsn string
 	if dev {
 		os.MkdirAll("./tmp", 0755)
-		db, err = index.Open("./tmp/impromptu.db")
+		dsn = "./tmp/impromptu.db"
 	} else {
-		dbPath := requireEnv("IMPROMPTU_DB_PATH")
-		db, err = index.Open(dbPath)
+		dsn = requireEnv("IMPROMPTU_DB_PATH")
 	}
+
+	// Open via index.Open for WAL mode + migrations
+	legacyDB, err := index.Open(dsn)
 	if err != nil {
 		fatal("opening database: %v", err)
 	}
-	defer db.Close()
+	defer legacyDB.Close()
 
 	migrations := os.DirFS(".")
-	if err := index.Migrate(context.Background(), db, migrations); err != nil {
+	if err := index.Migrate(context.Background(), legacyDB, migrations); err != nil {
 		fatal("running migrations: %v", err)
 	}
 
-	// Blob store
-	var blobs registry.BlobStore
+	// Wrap the raw *sql.DB with indexdb
+	idx := indexdb.New(legacyDB.RawDB())
+
+	// Verifier
+	var verifier sigstore.Verifier
 	if dev {
-		blobs, err = registry.NewFilesystemStore("./tmp/blobs")
-		if err != nil {
-			fatal("creating blob store: %v", err)
-		}
+		verifier = sigstore.NewFakeVerifier()
 	} else {
-		blobs, err = registry.NewR2Store(
-			requireEnv("R2_ENDPOINT"),
-			requireEnv("R2_ACCESS_KEY_ID"),
-			requireEnv("R2_SECRET_ACCESS_KEY"),
-			requireEnv("R2_BUCKET"),
-		)
-		if err != nil {
-			fatal("creating R2 store: %v", err)
-		}
+		verifier = sigstore.NewFakeVerifier() // TODO: wire real Rekor verifier
 	}
 
-	// Cookie signing
-	var cookieKey []byte
-	secure := false
-	if dev {
-		cookieKey = []byte("dev-mode-key-32-bytes-long-ok!!!")
-	} else {
-		keyHex := requireEnv("COOKIE_KEY")
-		cookieKey, err = hex.DecodeString(keyHex)
-		if err != nil {
-			fatal("decoding COOKIE_KEY: %v", err)
-		}
-		secure = true
-	}
-	signer := auth.NewCookieSigner(cookieKey)
-	sessions := auth.NewSessionStore(db.RawDB())
-
-	// OAuth
-	clientID := envOr("GITHUB_CLIENT_ID", "")
-	clientSecret := envOr("GITHUB_CLIENT_SECRET", "")
-	var redirectURL string
-	if dev {
-		redirectURL = "http://localhost" + addr + "/callback"
-	} else {
-		domain := requireEnv("DOMAIN")
-		redirectURL = "https://" + domain + "/callback"
-	}
-	provider := auth.NewGitHubProvider(clientID, clientSecret, redirectURL)
-
-	ah := &auth.Handlers{
-		Provider:    provider,
-		Sessions:    sessions,
-		Signer:      signer,
-		CookieName:  "session",
-		StateCookie: "oauth_state",
-		Secure:      secure,
-		EnsureAuthor: func(ctx context.Context, user auth.GitHubUser) (int64, error) {
-			return db.InsertAuthor(ctx, user.Username, user.Name, user.AvatarURL, user.ProfileURL)
-		},
-	}
-
-	srv := web.NewServer(db, blobs, ah, sessions, signer, "session")
+	srv := web.NewServer(idx, verifier)
 
 	httpSrv := &http.Server{
 		Addr:    addr,
 		Handler: srv.Routes(),
 	}
 
-	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -393,73 +340,6 @@ func runRemove() {
 		os.Exit(1)
 	}
 	fmt.Printf("Removed %s.\n", alias)
-}
-
-func runPublish() {
-	dir, _ := os.Getwd()
-	var name, description, version, token string
-
-	args := os.Args[2:]
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--name":
-			if i+1 < len(args) {
-				i++
-				name = args[i]
-			}
-		case "--description":
-			if i+1 < len(args) {
-				i++
-				description = args[i]
-			}
-		case "--version":
-			if i+1 < len(args) {
-				i++
-				version = args[i]
-			}
-		case "--token":
-			if i+1 < len(args) {
-				i++
-				token = args[i]
-			}
-		}
-	}
-
-	if name == "" || version == "" {
-		fmt.Fprintf(os.Stderr, "usage: impromptu publish --name <name> --version <version> [--description <desc>] [--token <token>]\n")
-		os.Exit(1)
-	}
-
-	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
-
-	// If no token provided, login via browser
-	if token == "" {
-		fmt.Println("Opening browser for authentication...")
-		var err error
-		token, err = cliauth.Login(context.Background(), registryURL)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: login failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Authenticated.")
-	}
-
-	result, err := publish.Publish(context.Background(), publish.PublishConfig{
-		Dir:         dir,
-		Name:        name,
-		Description: description,
-		Version:     version,
-		RegistryURL: registryURL,
-		Token:       token,
-		Identity:    "github.com/cli-user",
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Published %s@%s\n", result.Name, result.Version)
-	fmt.Printf("Digest: %s\n", result.Digest)
 }
 
 func fatal(format string, args ...any) {

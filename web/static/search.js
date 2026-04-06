@@ -9,7 +9,7 @@
         var q = form.querySelector("input[name=q]").value;
         if (!q) return;
 
-        fetch("/api/v1/search?q=" + encodeURIComponent(q))
+        fetch("/api/search?q=" + encodeURIComponent(q))
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data.results || data.results.length === 0) {
@@ -18,9 +18,9 @@
                 }
                 var html = "<ul>";
                 data.results.forEach(function (r) {
-                    html += "<li><a href=\"/" + r.author + "/" + r.name + "\">"
-                        + r.author + "/" + r.name + "</a>"
-                        + "<br><span class=\"meta\">" + r.description + "</span></li>";
+                    html += "<li><a href=\"" + r.source_url + "\">"
+                        + r.source_url + "</a>"
+                        + "<br><span class=\"meta\">Signed by " + r.signer_identity + "</span></li>";
                 });
                 html += "</ul>";
                 results.innerHTML = html;

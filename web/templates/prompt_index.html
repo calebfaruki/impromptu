@@ -1,0 +1,27 @@
+{{ define "title" }}{{ .SourceURL }} -- Impromptu{{ end }}
+{{ define "content" }}
+<h1>Prompt index</h1>
+<dl>
+    <dt>Source</dt>
+    <dd><a href="{{ .SourceURL }}">{{ .SourceURL }}</a></dd>
+    <dt>Digest</dt>
+    <dd><code>{{ .Latest.Digest }}</code></dd>
+    <dt>Signer identity</dt>
+    <dd>{{ .Latest.SignerIdentity }}</dd>
+    <dt>Rekor log index</dt>
+    <dd><a href="https://search.sigstore.dev/?logIndex={{ .Latest.RekorLogIndex }}">{{ .Latest.RekorLogIndex }}</a></dd>
+    <dt>Indexed</dt>
+    <dd>{{ .Latest.IndexedAt.Format "2006-01-02T15:04:05Z" }}</dd>
+</dl>
+{{ if gt (len .Entries) 1 }}
+<h2>All versions</h2>
+<ul class="prompt-list">
+    {{ range .Entries }}
+    <li>
+        <code>{{ .Digest }}</code>
+        <br><span class="meta">Signed by {{ .SignerIdentity }} -- <a href="https://search.sigstore.dev/?logIndex={{ .RekorLogIndex }}">Rekor #{{ .RekorLogIndex }}</a> -- {{ .IndexedAt.Format "2006-01-02" }}</span>
+    </li>
+    {{ end }}
+</ul>
+{{ end }}
+{{ end }}
