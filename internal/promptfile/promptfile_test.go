@@ -219,10 +219,16 @@ func TestSourceFromFlagsOCIDigest(t *testing.T) {
 	}
 }
 
-func TestSourceFromFlagsMissingVersion(t *testing.T) {
-	_, err := SourceFromFlags("https://github.com/alice/coder", "", "", "", "", "", "", false)
-	if err == nil {
-		t.Fatal("expected error")
+func TestSourceFromFlagsNoRef(t *testing.T) {
+	src, err := SourceFromFlags("https://github.com/alice/coder", "", "", "", "", "", "", false)
+	if err != nil {
+		t.Fatalf("no ref should be valid: %v", err)
+	}
+	if src.Kind != SourceGit {
+		t.Errorf("kind: got %q", src.Kind)
+	}
+	if src.Tag != "" || src.Branch != "" || src.Commit != "" {
+		t.Error("expected no ref fields set")
 	}
 }
 
@@ -333,5 +339,23 @@ func TestEmptyPrompts(t *testing.T) {
 	}
 	if len(pf.Prompts) != 0 {
 		t.Errorf("expected 0, got %d", len(pf.Prompts))
+	}
+}
+
+func TestParseGitNoRef(t *testing.T) {
+	data := []byte("version = 1\n\n[prompts]\nclaude = {git = \"https://github.com/alice/prompts\"}\n")
+	pf, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	src := pf.Prompts["claude"]
+	if src.Kind != SourceGit {
+		t.Errorf("kind: got %q", src.Kind)
+	}
+	if src.Git != "https://github.com/alice/prompts" {
+		t.Errorf("git: got %q", src.Git)
+	}
+	if src.Tag != "" || src.Branch != "" || src.Commit != "" {
+		t.Error("expected no ref fields set")
 	}
 }

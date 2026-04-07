@@ -280,20 +280,24 @@ func TestGitCommitSHACorrectForTag(t *testing.T) {
 	}
 }
 
-func TestGitMissingRefType(t *testing.T) {
+func TestResolveGitNoRef(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
-	}, "v1")
+	}, "")
 
 	resolver := &GitResolver{}
-	_, err := resolver.Resolve(context.Background(), promptfile.Source{
+	result, err := resolver.Resolve(context.Background(), promptfile.Source{
 		Kind: promptfile.SourceGit,
 		Git:  repoDir,
-	}, false)
-	if err == nil {
-		t.Fatal("expected error when no tag/branch/commit set")
+	}, true)
+	if err != nil {
+		t.Fatalf("Resolve with no ref: %v", err)
 	}
-	if !strings.Contains(err.Error(), "must have tag, branch, or commit") {
-		t.Errorf("error should mention missing ref: %v", err)
+	if result.Entry.Commit == "" {
+		t.Error("expected HEAD commit SHA to be resolved")
 	}
+	if _, err := os.Stat(filepath.Join(result.Dir, "01-context.md")); err != nil {
+		t.Error("resolved files missing")
+	}
+	os.RemoveAll(result.CleanupDir)
 }

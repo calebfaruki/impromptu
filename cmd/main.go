@@ -98,12 +98,8 @@ func runServe(dev bool) {
 	idx := indexdb.New(legacyDB.RawDB())
 
 	// Verifier
-	var verifier sigstore.Verifier
-	if dev {
-		verifier = sigstore.NewFakeVerifier()
-	} else {
-		verifier = sigstore.NewFakeVerifier() // TODO: wire real Rekor verifier
-	}
+	rekorURL := envOr("REKOR_URL", sigstore.DefaultRekorURL)
+	verifier := sigstore.NewRekorVerifier(rekorURL)
 
 	srv := web.NewServer(idx, verifier)
 
@@ -205,13 +201,14 @@ func runPull() {
 	}
 
 	indexURL := envOr("IMPROMPTU_INDEX", "http://localhost:8080")
+	rekorURL := envOr("REKOR_URL", sigstore.DefaultRekorURL)
 	cfg := pull.Config{
 		Dir:      dir,
 		Force:    force,
 		Yes:      yes,
 		IndexURL: indexURL,
-		Verifier: &sigstore.FakeVerifier{},
-		Searcher: sigstore.NewFakeSearcher(),
+		Verifier: sigstore.NewRekorVerifier(rekorURL),
+		Searcher: sigstore.NewRekorSearcher(rekorURL),
 		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
@@ -308,9 +305,11 @@ func runUpdate() {
 	}
 
 	registryURL := envOr("IMPROMPTU_REGISTRY", "http://localhost:8080")
+	rekorUpdateURL := envOr("REKOR_URL", sigstore.DefaultRekorURL)
 	cfg := pull.Config{
 		Dir: dir, Force: force, Yes: yes, RegistryURL: registryURL,
-		Verifier: &sigstore.FakeVerifier{},
+		Verifier: sigstore.NewRekorVerifier(rekorUpdateURL),
+		Searcher: sigstore.NewRekorSearcher(rekorUpdateURL),
 		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)

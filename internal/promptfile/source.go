@@ -45,8 +45,8 @@ func parseGitSource(gitURL string, raw map[string]any) (Source, error) {
 		refCount++
 		s.Commit = commit
 	}
-	if refCount != 1 {
-		return Source{}, fmt.Errorf("git source must have exactly one of tag, branch, or commit")
+	if refCount > 1 {
+		return Source{}, fmt.Errorf("git source must have at most one of tag, branch, or commit")
 	}
 
 	if p, ok := raw["path"].(string); ok && p != "" {
@@ -138,9 +138,13 @@ func SourceFromFlags(git, oci, tag, branch, commit, digest, p string, inline boo
 }
 
 // AliasFromSource derives a default alias from the source URL.
+// If a path is set, uses the last segment of the path instead.
 func AliasFromSource(src Source) string {
 	switch src.Kind {
 	case SourceGit:
+		if src.Path != "" {
+			return path.Base(src.Path)
+		}
 		base := path.Base(src.Git)
 		return strings.TrimSuffix(base, ".git")
 	case SourceOCI:

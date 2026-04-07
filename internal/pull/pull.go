@@ -102,7 +102,11 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 			sourceURL = src.OCI
 		}
 		if cfg.Searcher != nil {
-			indexWarnings := MaybeIndex(ctx, cfg.IndexURL, sourceURL, entry.Digest, cfg.Searcher)
+			lookupHash := entry.Digest
+			if src.Kind == promptfile.SourceGit && entry.Commit != "" {
+				lookupHash = "sha1:" + entry.Commit
+			}
+			indexWarnings := MaybeIndex(ctx, cfg.IndexURL, sourceURL, lookupHash, cfg.Searcher)
 			result.Warnings = append(result.Warnings, indexWarnings...)
 		}
 	}

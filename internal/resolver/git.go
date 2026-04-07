@@ -141,5 +141,10 @@ func checkoutRef(repo *git.Repository, src promptfile.Source, result *GitResult,
 		return src.Commit, nil
 	}
 
-	return "", fmt.Errorf("git source must have tag, branch, or commit")
+	// No ref specified — use HEAD (already checked out by clone)
+	head, err := repo.Head()
+	if err != nil {
+		return "", fmt.Errorf("getting HEAD: %w", err)
+	}
+	return head.Hash().String(), nil
 }

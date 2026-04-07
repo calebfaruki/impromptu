@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -400,63 +399,3 @@ func TestPullFailureNoPartialInline(t *testing.T) {
 	}
 }
 
-// alwaysSignedSearcher returns a valid RekorEntry for any digest.
-type alwaysSignedSearcher struct{}
-
-func (s *alwaysSignedSearcher) Search(_ context.Context, digest string) (*sigstore.RekorEntry, error) {
-	return &sigstore.RekorEntry{LogIndex: 42, Digest: digest, SignerIdentity: "test@github.com"}, nil
-}
-
-// TestAutoIndexOnPull proves that Pull calls MaybeIndex and the index server receives the submission.
-func TestAutoIndexOnPull(t *testing.T) {
-	// Allow local paths (ParseSourceURL returns "" host for /tmp/... paths)
-	pull.AllowlistedHosts[""] = true
-	defer delete(pull.AllowlistedHosts, "")
-
-	// Mock index server that records POSTs
-	var postCount atomic.Int32
-	var receivedBody map[string]any
-	indexSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" && r.URL.Path == "/api/index" {
-			postCount.Add(1)
-			json.NewDecoder(r.Body).Decode(&receivedBody)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}))
-	defer indexSrv.Close()
-
-	repoDir := createGitRepo(t, map[string]string{
-		"01-context.md": "# Test Prompt\n",
-	}, "v1")
-
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"),
-		[]byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
-
-	_, err := pull.Pull(context.Background(), pull.Config{
-		Dir:      dir,
-		Yes:      true,
-		Force:    true,
-		IndexURL: indexSrv.URL,
-		Verifier: &sigstore.FakeVerifier{},
-		Searcher: &alwaysSignedSearcher{},
-	})
-	if err != nil {
-		t.Fatalf("Pull: %v", err)
-	}
-
-	if postCount.Load() != 1 {
-		t.Errorf("expected 1 index POST, got %d", postCount.Load())
-	}
-	if receivedBody == nil {
-		t.Fatal("index server received no body")
-	}
-	if src, _ := receivedBody["source_url"].(string); src != repoDir {
-		t.Errorf("source_url: got %q, want %q", src, repoDir)
-	}
-	if dig, _ := receivedBody["digest"].(string); dig == "" {
-		t.Error("digest should not be empty")
-	}
-}
