@@ -547,3 +547,28 @@ func TestPullWithoutInlineAfterInline(t *testing.T) {
 		t.Errorf("error should mention inline: %v", err)
 	}
 }
+
+func TestInlinePullRollbackOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	pfPath := filepath.Join(dir, "Promptfile")
+	original := []byte("version = 1\n\n[prompts]\n")
+	os.WriteFile(pfPath, original, 0644)
+
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: "/nonexistent/repo", Tag: "v1"}
+	_, err := InlinePull(context.Background(), Config{
+		Dir: dir, Yes: true, Force: true,
+		Verifier: &sigstore.FakeVerifier{},
+	}, src, "broken")
+	if err == nil {
+		t.Fatal("expected error for bad git URL")
+	}
+
+	// Promptfile should be restored to original — no "broken" entry
+	data, _ := os.ReadFile(pfPath)
+	if strings.Contains(string(data), "broken") {
+		t.Error("Promptfile should not contain failed alias after rollback")
+	}
+	if string(data) != string(original) {
+		t.Errorf("Promptfile should be restored to original.\ngot:  %q\nwant: %q", string(data), string(original))
+	}
+}

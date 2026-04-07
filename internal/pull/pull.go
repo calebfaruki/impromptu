@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ type Config struct {
 	IndexURL    string
 	Verifier    sigstore.Verifier
 	Searcher    sigstore.Searcher
+	Progress    io.Writer
 }
 
 // Result reports what happened during the pull.
@@ -84,6 +86,7 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 	newBlobs := make(map[string][]byte)
 	for _, name := range diff.Added {
 		src := pf.Prompts[name]
+		logProgress(cfg, "Resolving %s (%s)...\n", name, sourceDesc(src))
 		entry, blob, warnings, err := resolveSource(ctx, name, src, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("resolving %s: %w", name, err)
@@ -237,13 +240,18 @@ func InlinePull(ctx context.Context, cfg Config, src promptfile.Source, alias st
 		return nil, fmt.Errorf("writing Promptfile: %w", err)
 	}
 
-	return Pull(ctx, cfg)
+	result, err := Pull(ctx, cfg)
+	if err != nil {
+		os.WriteFile(pfPath, pfData, 0644)
+		return nil, err
+	}
+	return result, nil
 }
 
 func resolveSource(ctx context.Context, name string, src promptfile.Source, cfg Config) (lockfile.LockfileEntry, []byte, []string, error) {
 	switch src.Kind {
 	case promptfile.SourceGit:
-		gr := &resolver.GitResolver{}
+		gr := &resolver.GitResolver{Progress: cfg.Progress}
 		result, err := gr.Resolve(ctx, src, cfg.Force)
 		if err != nil {
 			return lockfile.LockfileEntry{}, nil, nil, err
@@ -257,7 +265,7 @@ func resolveSource(ctx context.Context, name string, src promptfile.Source, cfg 
 		return result.Entry, blob, result.Warnings, nil
 
 	case promptfile.SourceOCI:
-		or := &resolver.OCIResolver{}
+		or := &resolver.OCIResolver{Progress: cfg.Progress}
 		result, err := or.Resolve(ctx, src, cfg.Force)
 		if err != nil {
 			return lockfile.LockfileEntry{}, nil, nil, err
@@ -309,4 +317,34 @@ func atomicWrite(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+func logProgress(cfg Config, format string, args ...any) {
+	if cfg.Progress != nil {
+		fmt.Fprintf(cfg.Progress, format, args...)
+	}
+}
+
+func sourceDesc(src promptfile.Source) string {
+	ref := ""
+	switch {
+	case src.Tag != "":
+		ref = "tag: " + src.Tag
+	case src.Branch != "":
+		ref = "branch: " + src.Branch
+	case src.Commit != "":
+		ref = "commit: " + src.Commit[:min(8, len(src.Commit))]
+	case src.OCITag != "":
+		ref = "tag: " + src.OCITag
+	case src.Digest != "":
+		ref = "digest: " + src.Digest[:min(19, len(src.Digest))]
+	}
+	url := src.Git
+	if src.Kind == promptfile.SourceOCI {
+		url = src.OCI
+	}
+	if ref != "" {
+		return url + ", " + ref
+	}
+	return url
 }

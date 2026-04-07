@@ -12,7 +12,7 @@ import (
 	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
-var allowlistedHosts = map[string]bool{
+var AllowlistedHosts = map[string]bool{
 	"github.com":   true,
 	"codeberg.org": true,
 	"ghcr.io":      true,
@@ -27,7 +27,7 @@ func MaybeIndex(ctx context.Context, indexURL string, sourceURL string, digest s
 	}
 
 	host, _, _ := authprobe.ParseSourceURL(sourceURL)
-	if !allowlistedHosts[host] {
+	if !AllowlistedHosts[host] {
 		return nil
 	}
 

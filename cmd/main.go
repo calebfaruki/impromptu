@@ -212,6 +212,7 @@ func runPull() {
 		IndexURL: indexURL,
 		Verifier: &sigstore.FakeVerifier{},
 		Searcher: sigstore.NewFakeSearcher(),
+		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
 			fmt.Print("Continue? [y/N] ")
@@ -310,6 +311,7 @@ func runUpdate() {
 	cfg := pull.Config{
 		Dir: dir, Force: force, Yes: yes, RegistryURL: registryURL,
 		Verifier: &sigstore.FakeVerifier{},
+		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
 			fmt.Print("Continue? [y/N] ")

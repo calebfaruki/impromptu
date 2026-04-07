@@ -27,7 +27,9 @@ type OCIResult struct {
 }
 
 // OCIResolver pulls prompt artifacts from OCI registries.
-type OCIResolver struct{}
+type OCIResolver struct {
+	Progress io.Writer
+}
 
 // Resolve pulls an OCI image, extracts its layer, verifies the digest,
 // runs content checks, and returns the result.
@@ -51,6 +53,9 @@ func (o *OCIResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 		return nil, fmt.Errorf("parsing OCI reference %q: %w", refStr, err)
 	}
 
+	if o.Progress != nil {
+		fmt.Fprintf(o.Progress, "Pulling OCI image %s...\n", refStr)
+	}
 	img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
 	if err != nil {
 		return nil, fmt.Errorf("pulling %s: %w", refStr, err)

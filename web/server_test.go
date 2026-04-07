@@ -301,6 +301,97 @@ func TestIndexAPIDuplicateIdempotent(t *testing.T) {
 	}
 }
 
+func TestIndexAPIMissingFields(t *testing.T) {
+	srv, _, _ := testServer(t)
+
+	tests := []struct {
+		name string
+		body map[string]any
+	}{
+		{"missing source_url", map[string]any{"digest": "sha256:abc", "rekor_log_index": 1}},
+		{"missing digest", map[string]any{"source_url": "https://github.com/alice/repo", "rekor_log_index": 1}},
+		{"empty source_url", map[string]any{"source_url": "", "digest": "sha256:abc", "rekor_log_index": 1}},
+		{"empty digest", map[string]any{"source_url": "https://github.com/alice/repo", "digest": "", "rekor_log_index": 1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postJSON(t, srv.Routes(), "/api/index", tt.body)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("got %d, want 400; body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestIndexAPIInvalidJSON(t *testing.T) {
+	srv, _, _ := testServer(t)
+	req := httptest.NewRequest("POST", "/api/index", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIndexAPIProbeServerError(t *testing.T) {
+	srv, _, verifier := testServer(t)
+
+	// probeClient returns 500 → probe treats as Private → API returns 403
+	srv.probeClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			rec := httptest.NewRecorder()
+			rec.WriteHeader(http.StatusInternalServerError)
+			return rec.Result(), nil
+		}),
+	}
+
+	verifier.AddEntry(sigstore.RekorEntry{
+		LogIndex:       100,
+		Digest:         "sha256:validdigest",
+		SignerIdentity: "user@github.com",
+	})
+
+	rec := postJSON(t, srv.Routes(), "/api/index", map[string]any{
+		"source_url":      "https://github.com/alice/prompts",
+		"digest":          "sha256:validdigest",
+		"rekor_log_index": 100,
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("got %d, want 403 (fail-closed on probe 500); body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIndexAPIProbeTimeout(t *testing.T) {
+	srv, _, verifier := testServer(t)
+
+	// probeClient returns deadline exceeded → probe treats as Private → API returns 403
+	srv.probeClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, context.DeadlineExceeded
+		}),
+	}
+
+	verifier.AddEntry(sigstore.RekorEntry{
+		LogIndex:       100,
+		Digest:         "sha256:validdigest",
+		SignerIdentity: "user@github.com",
+	})
+
+	rec := postJSON(t, srv.Routes(), "/api/index", map[string]any{
+		"source_url":      "https://github.com/alice/prompts",
+		"digest":          "sha256:validdigest",
+		"rekor_log_index": 100,
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("got %d, want 403 (fail-closed on probe timeout); body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- Old routes return 404 ---
 
 func TestOldPublishReturns404(t *testing.T) {

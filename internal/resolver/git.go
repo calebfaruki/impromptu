@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,9 @@ type GitResult struct {
 }
 
 // GitResolver clones git repos and checks out specific refs.
-type GitResolver struct{}
+type GitResolver struct {
+	Progress io.Writer
+}
 
 // Resolve clones a git repo, checks out the specified ref, runs content checks,
 // and returns the resolved lockfile entry.
@@ -39,7 +42,8 @@ func (g *GitResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 	}
 
 	repo, err := git.PlainCloneContext(ctx, tmpDir, false, &git.CloneOptions{
-		URL: src.Git,
+		URL:      src.Git,
+		Progress: g.Progress,
 	})
 	if err != nil {
 		os.RemoveAll(tmpDir)
