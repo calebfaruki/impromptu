@@ -1,11 +1,64 @@
-{{ define "title" }}Impromptu -- Prompt Registry{{ end }}
+{{ define "title" }}Impromptu - Prompt Package Manager{{ end }}
 {{ define "content" }}
-<h1>Find verified prompts</h1>
+<h1>A package manager for prompts</h1>
+<p>Declare prompt dependencies. Pull them. Verify who signed them.</p>
+<p>No scanner, linter, or test can reliably differentiate between a malicious prompt and a legitimate one. Sigstore identity signing and version pinning are the best available defense. Impromptu implements both.</p>
+
 <form id="search-form" action="/search" method="get">
-    <label for="q">Search prompts by name, description, or author</label>
+    <label for="q">Search the index</label>
     <input type="search" id="q" name="q" placeholder="e.g. code review">
     <button type="submit">Search</button>
 </form>
 <div id="results"></div>
+
+<h2>Quick start</h2>
+
+<p>Install:</p>
+<pre>go install github.com/calebfaruki/impromptu/cmd@latest</pre>
+
+<pre>impromptu init
+
+<span class="comment"># latest</span>
+impromptu pull https://github.com/anthropics/prompts
+
+<span class="comment"># tag</span>
+impromptu pull https://github.com/anthropics/prompts --ref v1
+
+<span class="comment"># commit</span>
+impromptu pull https://github.com/anthropics/prompts --ref a1b2c3d
+
+<span class="comment"># signed release</span>
+impromptu pull https://github.com/anthropics/prompts --release v1
+
+<span class="comment"># subdirectory from a monorepo</span>
+impromptu pull https://github.com/anthropics/prompts --ref v1 --path code-review
+
+<span class="comment"># custom alias</span>
+impromptu pull https://github.com/anthropics/prompts --ref v1 --as reviewer
+
+<span class="comment"># inline a single file into your working directory</span>
+impromptu pull https://github.com/anthropics/prompts --ref v1 --path claude-md --inline</pre>
+
+<h2>How it works</h2>
+
+<p><strong>Clone mode</strong> (<code>--ref</code>) clones a git repo and checks out a tag, branch, or commit. Tags and commits are immutable. Branches are mutable and require <code>--force</code>.</p>
+
+<p><strong>Release mode</strong> (<code>--release</code>) downloads a signed tarball from a GitHub or Codeberg release. The <code>.sigstore.json</code> bundle is verified automatically. Unsigned releases are rejected unless <code>--force</code> is passed.</p>
+
+<h3>What gets checked</h3>
+
+<p><strong>Content.</strong> Every pull runs content checks on extracted files. Non-markdown files, symlinks, binaries, raw HTML outside fenced code blocks, and dangerous unicode (zero-width characters, RTL overrides, homoglyphs) are all rejected.</p>
+
+<p><strong>Signatures.</strong> Release mode verifies the Sigstore bundle: certificate chain, transparency log inclusion proof, and timestamps. The signer identity and Rekor log index are recorded in the lockfile.</p>
+
+<p><strong>Digests.</strong> The lockfile pins a SHA-256 digest for every dependency. On re-pull, on-disk content is compared against the lockfile. A mismatch triggers a re-resolve.</p>
+
+<h2>Links</h2>
+
+<ul>
+    <li><a href="https://promptfile.md">Promptfile spec</a> -- format documentation</li>
+    <li><a href="https://github.com/calebfaruki/impromptu">GitHub</a> -- source code</li>
+</ul>
+
 <script src="/static/search.js"></script>
 {{ end }}

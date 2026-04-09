@@ -78,6 +78,25 @@ textarea {
     margin-bottom: 0.75em;
 }
 
+#search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+
+#search-form label {
+    width: 100%;
+}
+
+#search-form input[type="search"] {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+#search-form button {
+    flex-shrink: 0;
+}
+
 button, input[type="submit"] {
     padding: 0.5em 1em;
     font-size: 1em;
@@ -94,6 +113,16 @@ pre {
     border: 1px solid #ddd;
     font-size: 0.875em;
     line-height: 1.5;
+}
+
+code {
+    background: #f5f5f5;
+    padding: 0.1em 0.3em;
+    font-size: 0.9em;
+}
+
+pre .comment {
+    color: #2d6a2e;
 }
 
 .prompt-list {

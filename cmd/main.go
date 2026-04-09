@@ -157,11 +157,6 @@ func runPull() {
 			yes = true
 		case "--inline":
 			inline = true
-		case "--git":
-			if i+1 < len(args) {
-				i++
-				gitURL = args[i]
-			}
 		case "--ref":
 			if i+1 < len(args) {
 				i++
@@ -186,6 +181,10 @@ func runPull() {
 			if i+1 < len(args) {
 				i++
 				alias = args[i]
+			}
+		default:
+			if !strings.HasPrefix(args[i], "-") && gitURL == "" {
+				gitURL = args[i]
 			}
 		}
 	}
@@ -343,13 +342,17 @@ func printHelp() {
 
 Commands:
   init       Create a new Promptfile in the current directory
-  pull       Fetch prompt dependencies (or add a new one with --git)
+  pull       Fetch prompt dependencies (or add a new one)
   search     Search the index for prompts
   update     Check for newer versions of dependencies
   remove     Remove a dependency
 
+Usage:
+  impromptu pull                                        # resolve Promptfile
+  impromptu pull <url> --ref <ref> --as <alias>         # add clone dep
+  impromptu pull <url> --release <tag> --as <alias>     # add release dep
+
 Pull flags:
-  --git <url>       Git repository URL
   --ref <ref>       Clone mode: tag, branch, or commit SHA (auto-detected)
   --release <tag>   Release mode: download signed release assets
   --path <dir>      Subdirectory within git repo (clone mode only)
