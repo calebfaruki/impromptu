@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/calebfaruki/impromptu/internal/authprobe"
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 var allowlistedHosts = map[string]bool{
@@ -17,11 +16,11 @@ var allowlistedHosts = map[string]bool{
 	"codeberg.org": true,
 }
 
-// MaybeIndex submits metadata to the index if the source is signed and public.
-// Uses Searcher to discover whether a Rekor entry exists for the digest.
+// SubmitToIndex submits verified release metadata to the index server.
+// Only called for release mode deps with a verified signer.
 // Returns warnings (never errors). Pull always succeeds regardless of indexing outcome.
-func MaybeIndex(ctx context.Context, indexURL string, sourceURL string, digest string, searcher sigstore.Searcher) []string {
-	if indexURL == "" {
+func SubmitToIndex(ctx context.Context, indexURL, sourceURL, digest, signer string, logIndex int64) []string {
+	if indexURL == "" || signer == "" {
 		return nil
 	}
 
@@ -30,16 +29,11 @@ func MaybeIndex(ctx context.Context, indexURL string, sourceURL string, digest s
 		return nil
 	}
 
-	entry, err := searcher.Search(ctx, digest)
-	if err != nil {
-		return []string{fmt.Sprintf("%s: unsigned, not indexed", sourceURL)}
-	}
-
 	body, _ := json.Marshal(map[string]any{
 		"source_url":      sourceURL,
 		"digest":          digest,
-		"rekor_log_index": entry.LogIndex,
-		"signer_identity": entry.SignerIdentity,
+		"rekor_log_index": logIndex,
+		"signer_identity": signer,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", indexURL+"/api/index", bytes.NewReader(body))

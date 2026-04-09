@@ -202,7 +202,7 @@ func TestSearchAPIError(t *testing.T) {
 
 // --- Update tests ---
 
-func TestUpdateGitDepSkipped(t *testing.T) {
+func TestUpdateTagLatest(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# test",
 	}, "v1")
@@ -219,7 +219,10 @@ func TestUpdateGitDepSkipped(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 	if len(result.Warnings) == 0 {
-		t.Error("expected skip warning for git dep")
+		t.Error("expected 'latest tag' warning")
+	}
+	if len(result.Added) > 0 {
+		t.Error("should not update when already at latest tag")
 	}
 }
 
@@ -258,21 +261,15 @@ func TestSearchWithSpaces(t *testing.T) {
 	}
 }
 
-func TestUpdateAllDeps(t *testing.T) {
+func TestUpdateAllDepsLatest(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"01-context.md": "# test",
+	}, "v1")
+
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n\n[prompts.reviewer]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n"), 0644)
+	pf := "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n\n[prompts.reviewer]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n"
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
-	lf := &lockfile.Lockfile{
-		Version: 1,
-		Entries: map[string]lockfile.LockfileEntry{
-			"coder":    {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/test/repo", Ref: "v1"},
-			"reviewer": {Name: "reviewer", Source: promptfile.SourceGit, Git: "https://github.com/test/repo", Ref: "v1"},
-		},
-	}
-	lfData, _ := lf.Bytes()
-	os.WriteFile(filepath.Join(dir, "Promptfile.lock"), lfData, 0644)
-
-	// No names arg -> update all
 	result, err := Update(context.Background(), pull.Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -280,9 +277,8 @@ func TestUpdateAllDeps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update all: %v", err)
 	}
-	// All deps should get skip warnings (git/OCI not yet updatable)
 	if len(result.Warnings) != 2 {
-		t.Errorf("expected 2 skip warnings, got %d", len(result.Warnings))
+		t.Errorf("expected 2 warnings (both at latest), got %d: %v", len(result.Warnings), result.Warnings)
 	}
 }
 

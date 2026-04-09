@@ -91,14 +91,15 @@ func (r *ReleaseResolver) Resolve(ctx context.Context, src promptfile.Source, fo
 	}
 
 	if bundleFound {
-		signer, err := verifyBundle(bundleBytes, tarball)
+		bv, err := verifyBundle(bundleBytes, tarball)
 		if err != nil {
 			if !force {
 				return nil, fmt.Errorf("sigstore verification failed: %w", err)
 			}
 			result.Warnings = append(result.Warnings, fmt.Sprintf("sigstore verification failed (bypassed with --force): %v", err))
 		} else {
-			result.Entry.Signer = signer
+			result.Entry.Signer = bv.Signer
+			result.Entry.RekorLogIndex = bv.RekorLogIndex
 		}
 	}
 
@@ -176,17 +177,22 @@ func (r *ReleaseResolver) download(ctx context.Context, url string) ([]byte, err
 	return io.ReadAll(resp.Body)
 }
 
+type bundleVerification struct {
+	Signer        string
+	RekorLogIndex int64
+}
+
 // verifyBundle verifies a sigstore bundle against artifact bytes.
-// Returns the signer identity (SAN from the Fulcio certificate).
-func verifyBundle(bundleJSON, artifact []byte) (string, error) {
+// Returns the signer identity and Rekor log index.
+func verifyBundle(bundleJSON, artifact []byte) (*bundleVerification, error) {
 	b := &bundle.Bundle{}
 	if err := b.UnmarshalJSON(bundleJSON); err != nil {
-		return "", fmt.Errorf("parsing sigstore bundle: %w", err)
+		return nil, fmt.Errorf("parsing sigstore bundle: %w", err)
 	}
 
 	trustedRoot, err := root.FetchTrustedRoot()
 	if err != nil {
-		return "", fmt.Errorf("fetching sigstore trusted root: %w", err)
+		return nil, fmt.Errorf("fetching sigstore trusted root: %w", err)
 	}
 
 	verifier, err := verify.NewVerifier(trustedRoot,
@@ -194,7 +200,7 @@ func verifyBundle(bundleJSON, artifact []byte) (string, error) {
 		verify.WithObserverTimestamps(1),
 	)
 	if err != nil {
-		return "", fmt.Errorf("creating verifier: %w", err)
+		return nil, fmt.Errorf("creating verifier: %w", err)
 	}
 
 	policy := verify.NewPolicy(
@@ -204,14 +210,20 @@ func verifyBundle(bundleJSON, artifact []byte) (string, error) {
 
 	result, err := verifier.Verify(b, policy)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	bv := &bundleVerification{}
 	if result.Signature != nil && result.Signature.Certificate != nil {
-		return result.Signature.Certificate.SubjectAlternativeName, nil
+		bv.Signer = result.Signature.Certificate.SubjectAlternativeName
 	}
 
-	return "", nil
+	entries, err := b.TlogEntries()
+	if err == nil && len(entries) > 0 {
+		bv.RekorLogIndex = entries[0].LogIndex()
+	}
+
+	return bv, nil
 }
 
 func (r *ReleaseResolver) logProgress(format string, args ...any) {

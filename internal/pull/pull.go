@@ -23,9 +23,8 @@ type Config struct {
 	Confirm     func(summary string) bool
 	RegistryURL string
 	IndexURL    string
-	Verifier    sigstore.Verifier
-	Searcher    sigstore.Searcher
-	Progress    io.Writer
+	Verifier sigstore.Verifier
+	Progress io.Writer
 }
 
 // Result reports what happened during the pull.
@@ -95,14 +94,9 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 		newBlobs[name] = blob
 		result.Warnings = append(result.Warnings, warnings...)
 
-		// Auto-index: discover Rekor signature and submit to index if signed + public
-		sourceURL := src.Git
-		if cfg.Searcher != nil {
-			lookupHash := entry.Digest
-			if src.Kind == promptfile.SourceGit && entry.Commit != "" {
-				lookupHash = "sha1:" + entry.Commit
-			}
-			indexWarnings := MaybeIndex(ctx, cfg.IndexURL, sourceURL, lookupHash, cfg.Searcher)
+		// Auto-index: submit verified release metadata to the index
+		if src.Kind == promptfile.SourceRelease && entry.Signer != "" {
+			indexWarnings := SubmitToIndex(ctx, cfg.IndexURL, src.Git, entry.Digest, entry.Signer, entry.RekorLogIndex)
 			result.Warnings = append(result.Warnings, indexWarnings...)
 		}
 	}

@@ -198,7 +198,6 @@ func runPull() {
 		Yes:      yes,
 		IndexURL: indexURL,
 		Verifier: sigstore.NewRekorVerifier(rekorURL),
-		Searcher: sigstore.NewRekorSearcher(rekorURL),
 		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)
@@ -299,7 +298,6 @@ func runUpdate() {
 	cfg := pull.Config{
 		Dir: dir, Force: force, Yes: yes, RegistryURL: registryURL,
 		Verifier: sigstore.NewRekorVerifier(rekorUpdateURL),
-		Searcher: sigstore.NewRekorSearcher(rekorUpdateURL),
 		Progress: os.Stderr,
 		Confirm: func(summary string) bool {
 			fmt.Print(summary)

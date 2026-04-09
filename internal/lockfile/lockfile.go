@@ -20,9 +20,10 @@ type LockfileEntry struct {
 	Asset    string // release mode: non-standard asset filename
 	Commit   string // resolved commit SHA (clone mode)
 	Path     string
-	Digest   string
-	Signer   string
-	Inline   bool
+	Digest        string
+	Signer        string
+	RekorLogIndex int64
+	Inline        bool
 	Filename string
 }
 
@@ -50,8 +51,9 @@ type rawLockEntry struct {
 	Commit   string `toml:"commit,omitempty"`
 	Path     string `toml:"path,omitempty"`
 	Digest   string `toml:"digest,omitempty"`
-	Signer   string `toml:"signer,omitempty"`
-	Inline   bool   `toml:"inline,omitempty"`
+	Signer        string `toml:"signer,omitempty"`
+	RekorLogIndex int64  `toml:"rekor_log_index,omitempty"`
+	Inline        bool   `toml:"inline,omitempty"`
 	Filename string `toml:"filename,omitempty"`
 	// Old fields for migration (read-only, never written)
 	Tag    string `toml:"tag,omitempty"`
@@ -95,8 +97,9 @@ func migrateEntry(r rawLockEntry) LockfileEntry {
 		Asset:    r.Asset,
 		Commit:   r.Commit,
 		Path:     r.Path,
-		Digest:   r.Digest,
-		Signer:   r.Signer,
+		Digest:        r.Digest,
+		Signer:        r.Signer,
+		RekorLogIndex: r.RekorLogIndex,
 		Inline:   r.Inline,
 		Filename: r.Filename,
 	}
@@ -140,9 +143,10 @@ func (lf *Lockfile) Bytes() ([]byte, error) {
 			Asset:    e.Asset,
 			Commit:   e.Commit,
 			Path:     e.Path,
-			Digest:   e.Digest,
-			Signer:   e.Signer,
-			Inline:   e.Inline,
+			Digest:        e.Digest,
+			Signer:        e.Signer,
+			RekorLogIndex: e.RekorLogIndex,
+			Inline:        e.Inline,
 			Filename: e.Filename,
 		})
 	}

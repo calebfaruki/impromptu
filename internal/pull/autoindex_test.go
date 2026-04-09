@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/calebfaruki/impromptu/internal/sigstore"
 )
 
 func mockIndexServer(t *testing.T) (*httptest.Server, *[]map[string]any) {
@@ -23,38 +21,37 @@ func mockIndexServer(t *testing.T) (*httptest.Server, *[]map[string]any) {
 	return srv, &received
 }
 
-func signedSearcher(digest, identity string, logIndex int64) *sigstore.FakeSearcher {
-	s := sigstore.NewFakeSearcher()
-	s.AddEntry(sigstore.RekorEntry{LogIndex: logIndex, Digest: digest, SignerIdentity: identity})
-	return s
-}
-
-func TestMaybeIndexSignedPublicGitHub(t *testing.T) {
+func TestSubmitToIndexSigned(t *testing.T) {
 	srv, received := mockIndexServer(t)
 	defer srv.Close()
 
-	warnings := MaybeIndex(context.Background(), srv.URL,
-		"https://github.com/alice/coder", "sha256:abc",
-		signedSearcher("sha256:abc", "alice@github.com", 42))
+	warnings := SubmitToIndex(context.Background(), srv.URL,
+		"https://github.com/alice/coder", "sha256:abc", "alice@github.com", 42)
 
 	if len(warnings) > 0 {
 		t.Errorf("expected no warnings, got: %v", warnings)
 	}
 	if len(*received) != 1 {
-		t.Fatalf("expected 1 index submission, got %d", len(*received))
+		t.Fatalf("expected 1 submission, got %d", len(*received))
 	}
-	if (*received)[0]["source_url"] != "https://github.com/alice/coder" {
-		t.Errorf("source_url: got %v", (*received)[0]["source_url"])
+	sub := (*received)[0]
+	if sub["source_url"] != "https://github.com/alice/coder" {
+		t.Errorf("source_url: got %v", sub["source_url"])
+	}
+	if sub["signer_identity"] != "alice@github.com" {
+		t.Errorf("signer_identity: got %v", sub["signer_identity"])
+	}
+	if sub["rekor_log_index"] != float64(42) {
+		t.Errorf("rekor_log_index: got %v", sub["rekor_log_index"])
 	}
 }
 
-func TestMaybeIndexSignedPublicCodeberg(t *testing.T) {
+func TestSubmitToIndexCodeberg(t *testing.T) {
 	srv, received := mockIndexServer(t)
 	defer srv.Close()
 
-	warnings := MaybeIndex(context.Background(), srv.URL,
-		"https://codeberg.org/alice/prompts", "sha256:abc",
-		signedSearcher("sha256:abc", "alice@codeberg.org", 1))
+	warnings := SubmitToIndex(context.Background(), srv.URL,
+		"https://codeberg.org/alice/prompts", "sha256:abc", "alice@codeberg.org", 1)
 
 	if len(warnings) > 0 {
 		t.Errorf("expected no warnings, got: %v", warnings)
@@ -64,33 +61,27 @@ func TestMaybeIndexSignedPublicCodeberg(t *testing.T) {
 	}
 }
 
-func TestMaybeIndexUnsigned(t *testing.T) {
+func TestSubmitToIndexNoSigner(t *testing.T) {
 	srv, received := mockIndexServer(t)
 	defer srv.Close()
 
-	// Empty searcher -- no entries, Search returns error
-	warnings := MaybeIndex(context.Background(), srv.URL,
-		"https://github.com/alice/coder", "sha256:abc",
-		sigstore.NewFakeSearcher())
+	warnings := SubmitToIndex(context.Background(), srv.URL,
+		"https://github.com/alice/coder", "sha256:abc", "", 0)
 
-	if len(warnings) != 1 {
-		t.Fatalf("expected 1 warning, got %d", len(warnings))
-	}
-	if !strings.Contains(warnings[0], "unsigned") {
-		t.Errorf("warning should mention unsigned: %s", warnings[0])
+	if len(warnings) > 0 {
+		t.Errorf("expected no warnings for empty signer, got: %v", warnings)
 	}
 	if len(*received) != 0 {
-		t.Error("unsigned should not submit to index")
+		t.Error("empty signer should not submit")
 	}
 }
 
-func TestMaybeIndexNonAllowlistedHost(t *testing.T) {
+func TestSubmitToIndexNonAllowlistedHost(t *testing.T) {
 	srv, received := mockIndexServer(t)
 	defer srv.Close()
 
-	warnings := MaybeIndex(context.Background(), srv.URL,
-		"https://gitlab.com/alice/coder", "sha256:abc",
-		signedSearcher("sha256:abc", "alice@example.com", 1))
+	warnings := SubmitToIndex(context.Background(), srv.URL,
+		"https://gitlab.com/alice/coder", "sha256:abc", "alice@example.com", 1)
 
 	if len(warnings) > 0 {
 		t.Errorf("non-allowlisted should silently skip, got: %v", warnings)
@@ -100,10 +91,9 @@ func TestMaybeIndexNonAllowlistedHost(t *testing.T) {
 	}
 }
 
-func TestMaybeIndexServerDown(t *testing.T) {
-	warnings := MaybeIndex(context.Background(), "http://localhost:1",
-		"https://github.com/alice/coder", "sha256:abc",
-		signedSearcher("sha256:abc", "alice@github.com", 1))
+func TestSubmitToIndexServerDown(t *testing.T) {
+	warnings := SubmitToIndex(context.Background(), "http://localhost:1",
+		"https://github.com/alice/coder", "sha256:abc", "alice@github.com", 1)
 
 	if len(warnings) != 1 {
 		t.Fatalf("expected 1 warning for server down, got %d", len(warnings))
@@ -113,22 +103,9 @@ func TestMaybeIndexServerDown(t *testing.T) {
 	}
 }
 
-func TestMaybeIndexIdempotent(t *testing.T) {
-	srv, received := mockIndexServer(t)
-	defer srv.Close()
-
-	s := signedSearcher("sha256:abc", "alice@github.com", 1)
-	MaybeIndex(context.Background(), srv.URL, "https://github.com/alice/coder", "sha256:abc", s)
-	MaybeIndex(context.Background(), srv.URL, "https://github.com/alice/coder", "sha256:abc", s)
-
-	if len(*received) != 2 {
-		t.Errorf("expected 2 submissions (server handles idempotency), got %d", len(*received))
-	}
-}
-
-func TestMaybeIndexEmptyURL(t *testing.T) {
-	warnings := MaybeIndex(context.Background(), "",
-		"https://github.com/alice/coder", "sha256:abc", nil)
+func TestSubmitToIndexEmptyURL(t *testing.T) {
+	warnings := SubmitToIndex(context.Background(), "",
+		"https://github.com/alice/coder", "sha256:abc", "alice@github.com", 1)
 	if len(warnings) > 0 {
 		t.Errorf("empty index URL should silently skip, got: %v", warnings)
 	}
