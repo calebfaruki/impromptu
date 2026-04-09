@@ -1,15 +1,16 @@
 package resolver
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/calebfaruki/impromptu/internal/oci"
 	"github.com/calebfaruki/impromptu/internal/promptfile"
 )
 
@@ -30,13 +31,36 @@ func createReleaseMux(tarball, bundleJSON []byte) *http.ServeMux {
 
 func testTarball(t *testing.T) []byte {
 	t.Helper()
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Test prompt\n"), 0644)
-	blob, err := oci.PackageBytes(dir)
-	if err != nil {
-		t.Fatalf("PackageBytes: %v", err)
-	}
-	return blob
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	content := []byte("# Test prompt\n")
+	tw.WriteHeader(&tar.Header{
+		Name: "01-context.md",
+		Size: int64(len(content)),
+		Mode: 0644,
+	})
+	tw.Write(content)
+	tw.Close()
+	gz.Close()
+	return buf.Bytes()
+}
+
+func testTarballWithContent(t *testing.T, name, content string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	data := []byte(content)
+	tw.WriteHeader(&tar.Header{
+		Name: name,
+		Size: int64(len(data)),
+		Mode: 0644,
+	})
+	tw.Write(data)
+	tw.Close()
+	gz.Close()
+	return buf.Bytes()
 }
 
 func releaseSource() promptfile.Source {
@@ -192,9 +216,7 @@ func TestResolveRelease_404TarballFails(t *testing.T) {
 }
 
 func TestResolveRelease_ContentCheckFailure(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Bad\n\n<div>html</div>\n"), 0644)
-	tarball, _ := oci.PackageBytes(dir)
+	tarball := testTarballWithContent(t, "01-context.md", "# Bad\n\n<div>html</div>\n")
 
 	srv := httptest.NewServer(createReleaseMux(tarball, nil))
 	defer srv.Close()
@@ -211,9 +233,7 @@ func TestResolveRelease_ContentCheckFailure(t *testing.T) {
 }
 
 func TestResolveRelease_ContentCheckBlocksWithoutForce(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Bad\n\n<div>html</div>\n"), 0644)
-	tarball, _ := oci.PackageBytes(dir)
+	tarball := testTarballWithContent(t, "01-context.md", "# Bad\n\n<div>html</div>\n")
 
 	// Serve tarball but no bundle — need force for no bundle, so this test
 	// can't test content check without force while also having no bundle.
