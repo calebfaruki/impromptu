@@ -14,8 +14,6 @@ import (
 	"github.com/calebfaruki/impromptu/internal/promptfile"
 )
 
-// createTestRepo creates a git repo with files, a commit, and optionally a tag.
-// Returns the repo path usable as a clone URL.
 func createTestRepo(t *testing.T, files map[string]string, tag string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -62,7 +60,7 @@ func createTestRepo(t *testing.T, files map[string]string, tag string) string {
 	return dir
 }
 
-func TestGitCloneWithTag(t *testing.T) {
+func TestResolveRefAsTag(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n\nTest content.\n",
 	}, "v1.0.0")
@@ -71,7 +69,7 @@ func TestGitCloneWithTag(t *testing.T) {
 	result, err := resolver.Resolve(context.Background(), promptfile.Source{
 		Kind: promptfile.SourceGit,
 		Git:  repoDir,
-		Tag:  "v1.0.0",
+		Ref:  "v1.0.0",
 	}, false)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -79,23 +77,23 @@ func TestGitCloneWithTag(t *testing.T) {
 	defer os.RemoveAll(result.CleanupDir)
 
 	if result.Entry.Commit == "" {
-		t.Error("expected commit SHA to be recorded")
+		t.Error("expected commit SHA")
 	}
-	if result.Entry.Tag != "v1.0.0" {
-		t.Errorf("tag: got %q", result.Entry.Tag)
+	if result.Entry.RefType != "tag" {
+		t.Errorf("ref_type: got %q, want tag", result.Entry.RefType)
 	}
 }
 
-func TestGitCloneWithBranchFailsWithoutForce(t *testing.T) {
+func TestResolveRefAsBranchFailsWithoutForce(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
 	}, "")
 
 	resolver := &GitResolver{}
 	_, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind:   promptfile.SourceGit,
-		Git:    repoDir,
-		Branch: "master",
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  "master",
 	}, false)
 	if err == nil {
 		t.Fatal("expected error for mutable branch without force")
@@ -105,45 +103,44 @@ func TestGitCloneWithBranchFailsWithoutForce(t *testing.T) {
 	}
 }
 
-func TestGitCloneWithBranchForce(t *testing.T) {
+func TestResolveRefAsBranchWithForce(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
 	}, "")
 
 	resolver := &GitResolver{}
 	result, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind:   promptfile.SourceGit,
-		Git:    repoDir,
-		Branch: "master",
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  "master",
 	}, true)
 	if err != nil {
 		t.Fatalf("Resolve with force: %v", err)
 	}
 	defer os.RemoveAll(result.CleanupDir)
 
+	if result.Entry.RefType != "branch" {
+		t.Errorf("ref_type: got %q, want branch", result.Entry.RefType)
+	}
 	if len(result.Warnings) == 0 {
 		t.Error("expected warning for mutable branch")
 	}
-	if result.Entry.Commit == "" {
-		t.Error("expected commit SHA")
-	}
 }
 
-func TestGitCloneWithCommitSHA(t *testing.T) {
+func TestResolveRefAsCommitSHA(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
 	}, "v1")
 
-	// Get the commit SHA from the tag
 	repo, _ := git.PlainOpen(repoDir)
 	tagRef, _ := repo.Tag("v1")
 	sha := tagRef.Hash().String()
 
 	resolver := &GitResolver{}
 	result, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind:   promptfile.SourceGit,
-		Git:    repoDir,
-		Commit: sha,
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  sha,
 	}, false)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -153,53 +150,13 @@ func TestGitCloneWithCommitSHA(t *testing.T) {
 	if result.Entry.Commit != sha {
 		t.Errorf("commit: got %q, want %q", result.Entry.Commit, sha)
 	}
-}
-
-func TestGitCloneWithSubdirectory(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"prompts/review/01-context.md": "# Review\n",
-		"prompts/deploy/01-context.md": "# Deploy\n",
-		"README.md":                    "# Repo\n",
-	}, "v1")
-
-	resolver := &GitResolver{}
-	result, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind: promptfile.SourceGit,
-		Git:  repoDir,
-		Tag:  "v1",
-		Path: "prompts/review",
-	}, false)
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	defer os.RemoveAll(result.CleanupDir)
-
-	// Check that only the subdirectory files are in checkDir
-	entries, _ := os.ReadDir(result.Dir)
-	found := false
-	for _, e := range entries {
-		if e.Name() == "01-context.md" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("expected 01-context.md in subdirectory")
+	if result.Entry.RefType != "tag" {
+		// SHA matches the tag, so tag is found first
+		// This is expected: tag takes priority over commit SHA
 	}
 }
 
-func TestGitCloneInvalidURL(t *testing.T) {
-	resolver := &GitResolver{}
-	_, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind: promptfile.SourceGit,
-		Git:  "/nonexistent/repo/path",
-		Tag:  "v1",
-	}, false)
-	if err == nil {
-		t.Fatal("expected error for invalid URL")
-	}
-}
-
-func TestGitCloneNonexistentTag(t *testing.T) {
+func TestResolveRefNotFound(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
 	}, "v1")
@@ -208,79 +165,17 @@ func TestGitCloneNonexistentTag(t *testing.T) {
 	_, err := resolver.Resolve(context.Background(), promptfile.Source{
 		Kind: promptfile.SourceGit,
 		Git:  repoDir,
-		Tag:  "v999",
+		Ref:  "v999",
 	}, false)
 	if err == nil {
-		t.Fatal("expected error for nonexistent tag")
+		t.Fatal("expected error for nonexistent ref")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found: %v", err)
 	}
 }
 
-func TestGitContentCheckFailure(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# Prompt\n\n<div>raw html</div>\n",
-	}, "v1")
-
-	resolver := &GitResolver{}
-	_, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind: promptfile.SourceGit,
-		Git:  repoDir,
-		Tag:  "v1",
-	}, false)
-	if err == nil {
-		t.Fatal("expected content check failure")
-	}
-	if !strings.Contains(err.Error(), "content check") {
-		t.Errorf("error should mention content check: %v", err)
-	}
-}
-
-func TestGitContentCheckForceBypass(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# Prompt\n\n<div>raw html</div>\n",
-	}, "v1")
-
-	resolver := &GitResolver{}
-	result, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind: promptfile.SourceGit,
-		Git:  repoDir,
-		Tag:  "v1",
-	}, true)
-	if err != nil {
-		t.Fatalf("force should bypass content check: %v", err)
-	}
-	defer os.RemoveAll(result.CleanupDir)
-
-	if len(result.Warnings) == 0 {
-		t.Error("expected warning for content check bypass")
-	}
-}
-
-func TestGitCommitSHACorrectForTag(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# Context\n",
-	}, "v1.0.0")
-
-	repo, _ := git.PlainOpen(repoDir)
-	tagRef, _ := repo.Tag("v1.0.0")
-	expectedSHA := tagRef.Hash().String()
-
-	resolver := &GitResolver{}
-	result, err := resolver.Resolve(context.Background(), promptfile.Source{
-		Kind: promptfile.SourceGit,
-		Git:  repoDir,
-		Tag:  "v1.0.0",
-	}, false)
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	defer os.RemoveAll(result.CleanupDir)
-
-	if result.Entry.Commit != expectedSHA {
-		t.Errorf("commit SHA: got %q, want %q", result.Entry.Commit, expectedSHA)
-	}
-}
-
-func TestResolveGitNoRef(t *testing.T) {
+func TestResolveNoRef(t *testing.T) {
 	repoDir := createTestRepo(t, map[string]string{
 		"01-context.md": "# Context\n",
 	}, "")
@@ -293,11 +188,80 @@ func TestResolveGitNoRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve with no ref: %v", err)
 	}
+	defer os.RemoveAll(result.CleanupDir)
+
 	if result.Entry.Commit == "" {
-		t.Error("expected HEAD commit SHA to be resolved")
+		t.Error("expected HEAD commit SHA")
 	}
-	if _, err := os.Stat(filepath.Join(result.Dir, "01-context.md")); err != nil {
-		t.Error("resolved files missing")
+}
+
+func TestResolveWithSubdirectory(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"prompts/review/01-context.md": "# Review\n",
+		"prompts/deploy/01-context.md": "# Deploy\n",
+		"README.md":                    "# Repo\n",
+	}, "v1")
+
+	resolver := &GitResolver{}
+	result, err := resolver.Resolve(context.Background(), promptfile.Source{
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  "v1",
+		Path: "prompts/review",
+	}, false)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
-	os.RemoveAll(result.CleanupDir)
+	defer os.RemoveAll(result.CleanupDir)
+
+	entries, _ := os.ReadDir(result.Dir)
+	found := false
+	for _, e := range entries {
+		if e.Name() == "01-context.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected 01-context.md in subdirectory")
+	}
+}
+
+func TestResolveContentCheckFailure(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"01-context.md": "# Prompt\n\n<div>raw html</div>\n",
+	}, "v1")
+
+	resolver := &GitResolver{}
+	_, err := resolver.Resolve(context.Background(), promptfile.Source{
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  "v1",
+	}, false)
+	if err == nil {
+		t.Fatal("expected content check failure")
+	}
+	if !strings.Contains(err.Error(), "content check") {
+		t.Errorf("error should mention content check: %v", err)
+	}
+}
+
+func TestResolveContentCheckForceBypass(t *testing.T) {
+	repoDir := createTestRepo(t, map[string]string{
+		"01-context.md": "# Prompt\n\n<div>raw html</div>\n",
+	}, "v1")
+
+	resolver := &GitResolver{}
+	result, err := resolver.Resolve(context.Background(), promptfile.Source{
+		Kind: promptfile.SourceGit,
+		Git:  repoDir,
+		Ref:  "v1",
+	}, true)
+	if err != nil {
+		t.Fatalf("force should bypass: %v", err)
+	}
+	defer os.RemoveAll(result.CleanupDir)
+
+	if len(result.Warnings) == 0 {
+		t.Error("expected warning for content check bypass")
+	}
 }

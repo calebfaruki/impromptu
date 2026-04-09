@@ -35,24 +35,17 @@ func sourceMatches(src promptfile.Source, entry LockfileEntry) bool {
 	if src.Kind != entry.Source {
 		return false
 	}
+	if src.Git != entry.Git {
+		return false
+	}
 	switch src.Kind {
 	case promptfile.SourceGit:
-		if src.Git != entry.Git || src.Tag != entry.Tag ||
-			src.Branch != entry.Branch || src.Path != entry.Path {
-			return false
-		}
-		if src.Commit != "" && src.Commit != entry.Commit {
+		if src.Ref != entry.Ref || src.Path != entry.Path {
 			return false
 		}
 		return true
-	case promptfile.SourceOCI:
-		if src.OCI != entry.OCI {
-			return false
-		}
-		if src.OCITag != entry.Tag {
-			return false
-		}
-		if src.Digest != "" && src.Digest != entry.Digest {
+	case promptfile.SourceRelease:
+		if src.Release != entry.Release || src.Asset != entry.Asset {
 			return false
 		}
 		return true

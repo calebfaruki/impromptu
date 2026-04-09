@@ -14,11 +14,12 @@ type LockfileEntry struct {
 	Name     string
 	Source   promptfile.SourceKind
 	Git      string
-	Tag      string
-	Branch   string
-	Commit   string
+	Ref      string // clone mode: original ref string
+	RefType  string // "tag", "branch", or "commit"
+	Release  string // release mode: release tag name
+	Asset    string // release mode: non-standard asset filename
+	Commit   string // resolved commit SHA (clone mode)
 	Path     string
-	OCI      string
 	Digest   string
 	Signer   string
 	Inline   bool
@@ -37,22 +38,28 @@ type rawLockfile struct {
 	Prompt  []rawLockEntry `toml:"prompt"`
 }
 
+// rawLockEntry supports both old (tag/branch/commit) and new (ref/ref_type/release/asset) fields for migration.
 type rawLockEntry struct {
 	Name     string `toml:"name"`
 	Source   string `toml:"source"`
 	Git      string `toml:"git,omitempty"`
-	Tag      string `toml:"tag,omitempty"`
-	Branch   string `toml:"branch,omitempty"`
+	Ref      string `toml:"ref,omitempty"`
+	RefType  string `toml:"ref_type,omitempty"`
+	Release  string `toml:"release,omitempty"`
+	Asset    string `toml:"asset,omitempty"`
 	Commit   string `toml:"commit,omitempty"`
 	Path     string `toml:"path,omitempty"`
-	OCI      string `toml:"oci,omitempty"`
 	Digest   string `toml:"digest,omitempty"`
 	Signer   string `toml:"signer,omitempty"`
 	Inline   bool   `toml:"inline,omitempty"`
 	Filename string `toml:"filename,omitempty"`
+	// Old fields for migration (read-only, never written)
+	Tag    string `toml:"tag,omitempty"`
+	Branch string `toml:"branch,omitempty"`
 }
 
 // ParseLockfile reads a Promptfile.lock from TOML bytes.
+// Handles migration from old format (tag/branch/commit) to new format (ref/ref_type).
 func ParseLockfile(data []byte) (*Lockfile, error) {
 	var raw rawLockfile
 	if _, err := toml.Decode(string(data), &raw); err != nil {
@@ -67,25 +74,52 @@ func ParseLockfile(data []byte) (*Lockfile, error) {
 		Entries: make(map[string]LockfileEntry, len(raw.Prompt)),
 	}
 	for _, r := range raw.Prompt {
-		lf.Entries[r.Name] = LockfileEntry{
-			Name:     r.Name,
-			Source:   promptfile.SourceKind(r.Source),
-			Git:      r.Git,
-			Tag:      r.Tag,
-			Branch:   r.Branch,
-			Commit:   r.Commit,
-			Path:     r.Path,
-			OCI:      r.OCI,
-			Digest:   r.Digest,
-			Signer:   r.Signer,
-			Inline:   r.Inline,
-			Filename: r.Filename,
+		if r.Source == "oci" {
+			continue
 		}
+		entry := migrateEntry(r)
+		lf.Entries[entry.Name] = entry
 	}
 	return lf, nil
 }
 
-// Bytes serializes the Lockfile to TOML.
+// migrateEntry converts a raw TOML entry to a LockfileEntry, handling old→new field migration.
+func migrateEntry(r rawLockEntry) LockfileEntry {
+	e := LockfileEntry{
+		Name:     r.Name,
+		Source:   promptfile.SourceKind(r.Source),
+		Git:      r.Git,
+		Ref:      r.Ref,
+		RefType:  r.RefType,
+		Release:  r.Release,
+		Asset:    r.Asset,
+		Commit:   r.Commit,
+		Path:     r.Path,
+		Digest:   r.Digest,
+		Signer:   r.Signer,
+		Inline:   r.Inline,
+		Filename: r.Filename,
+	}
+
+	// Migrate old tag/branch/commit fields to ref/ref_type
+	if e.Ref == "" && e.Release == "" {
+		switch {
+		case r.Tag != "":
+			e.Ref = r.Tag
+			e.RefType = "tag"
+		case r.Branch != "":
+			e.Ref = r.Branch
+			e.RefType = "branch"
+		case r.Commit != "" && e.Source == promptfile.SourceGit:
+			e.Ref = r.Commit
+			e.RefType = "commit"
+		}
+	}
+
+	return e
+}
+
+// Bytes serializes the Lockfile to TOML (always writes new format).
 func (lf *Lockfile) Bytes() ([]byte, error) {
 	names := make([]string, 0, len(lf.Entries))
 	for name := range lf.Entries {
@@ -100,11 +134,12 @@ func (lf *Lockfile) Bytes() ([]byte, error) {
 			Name:     e.Name,
 			Source:   string(e.Source),
 			Git:      e.Git,
-			Tag:      e.Tag,
-			Branch:   e.Branch,
+			Ref:      e.Ref,
+			RefType:  e.RefType,
+			Release:  e.Release,
+			Asset:    e.Asset,
 			Commit:   e.Commit,
 			Path:     e.Path,
-			OCI:      e.OCI,
 			Digest:   e.Digest,
 			Signer:   e.Signer,
 			Inline:   e.Inline,

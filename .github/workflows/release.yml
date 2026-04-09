@@ -1,0 +1,45 @@
+name: Release signed prompts
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Package and sign prompts
+        run: |
+          mkdir -p dist
+          for dir in examples/author/prompts/*/; do
+            name=$(basename "$dir")
+            # Deterministic tar: sorted, no timestamps, no owner
+            tar --sort=name \
+                --mtime='1970-01-01 00:00:00Z' \
+                --owner=0 --group=0 --numeric-owner \
+                -czf "dist/${name}.tar.gz" \
+                -C "$dir" .
+            # Sign with keyless cosign (GitHub OIDC)
+            cosign sign-blob --yes \
+              --bundle "dist/${name}.tar.gz.sigstore.json" \
+              "dist/${name}.tar.gz"
+          done
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            dist/*

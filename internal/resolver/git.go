@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -15,6 +16,8 @@ import (
 	"github.com/calebfaruki/impromptu/internal/lockfile"
 	"github.com/calebfaruki/impromptu/internal/promptfile"
 )
+
+var commitSHAPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // GitResult holds the result of resolving a git dependency.
 type GitResult struct {
@@ -43,6 +46,7 @@ func (g *GitResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 
 	repo, err := git.PlainCloneContext(ctx, tmpDir, false, &git.CloneOptions{
 		URL:      src.Git,
+		Depth:    1,
 		Progress: g.Progress,
 	})
 	if err != nil {
@@ -54,20 +58,19 @@ func (g *GitResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 		Entry: lockfile.LockfileEntry{
 			Source: promptfile.SourceGit,
 			Git:    src.Git,
-			Tag:    src.Tag,
-			Branch: src.Branch,
+			Ref:    src.Ref,
 			Path:   src.Path,
 		},
 	}
 
-	commitSHA, err := checkoutRef(repo, src, result, force)
+	commitSHA, refType, err := resolveRef(repo, src.Ref, result, force)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		return nil, err
 	}
 	result.Entry.Commit = commitSHA
+	result.Entry.RefType = refType
 
-	// Determine the directory to check
 	checkDir := tmpDir
 	if src.Path != "" {
 		checkDir = filepath.Join(tmpDir, src.Path)
@@ -77,7 +80,6 @@ func (g *GitResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 		}
 	}
 
-	// Content checks
 	violations, err := contentcheck.CheckDirectory(checkDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -100,51 +102,53 @@ func (g *GitResolver) Resolve(ctx context.Context, src promptfile.Source, force 
 	return result, nil
 }
 
-func checkoutRef(repo *git.Repository, src promptfile.Source, result *GitResult, force bool) (string, error) {
+// resolveRef auto-detects whether ref is a tag, branch, or commit SHA, then checks it out.
+// Returns (commitSHA, refType, error).
+func resolveRef(repo *git.Repository, ref string, result *GitResult, force bool) (string, string, error) {
+	if ref == "" {
+		head, err := repo.Head()
+		if err != nil {
+			return "", "", fmt.Errorf("getting HEAD: %w", err)
+		}
+		return head.Hash().String(), "", nil
+	}
+
 	wt, err := repo.Worktree()
 	if err != nil {
-		return "", fmt.Errorf("getting worktree: %w", err)
+		return "", "", fmt.Errorf("getting worktree: %w", err)
 	}
 
-	if src.Tag != "" {
-		ref, err := repo.Tag(src.Tag)
-		if err != nil {
-			return "", fmt.Errorf("tag %q not found: %w", src.Tag, err)
+	// Try tag first
+	tagRef, err := repo.Tag(ref)
+	if err == nil {
+		if err := wt.Checkout(&git.CheckoutOptions{Hash: tagRef.Hash()}); err != nil {
+			return "", "", fmt.Errorf("checking out tag %q: %w", ref, err)
 		}
-		if err := wt.Checkout(&git.CheckoutOptions{Hash: ref.Hash()}); err != nil {
-			return "", fmt.Errorf("checking out tag %q: %w", src.Tag, err)
-		}
-		return ref.Hash().String(), nil
+		return tagRef.Hash().String(), "tag", nil
 	}
 
-	if src.Branch != "" {
-		refName := plumbing.NewBranchReferenceName(src.Branch)
-		ref, err := repo.Reference(refName, true)
-		if err != nil {
-			return "", fmt.Errorf("branch %q not found: %w", src.Branch, err)
-		}
-		if err := wt.Checkout(&git.CheckoutOptions{Hash: ref.Hash()}); err != nil {
-			return "", fmt.Errorf("checking out branch %q: %w", src.Branch, err)
+	// Try branch
+	branchRefName := plumbing.NewBranchReferenceName(ref)
+	branchRef, err := repo.Reference(branchRefName, true)
+	if err == nil {
+		if err := wt.Checkout(&git.CheckoutOptions{Hash: branchRef.Hash()}); err != nil {
+			return "", "", fmt.Errorf("checking out branch %q: %w", ref, err)
 		}
 		if !force {
-			return "", fmt.Errorf("branch %q is a mutable ref, use --force to bypass", src.Branch)
+			return "", "", fmt.Errorf("branch %q is a mutable ref, use --force to bypass", ref)
 		}
-		result.Warnings = append(result.Warnings, fmt.Sprintf("branch %q is mutable", src.Branch))
-		return ref.Hash().String(), nil
+		result.Warnings = append(result.Warnings, fmt.Sprintf("branch %q is mutable", ref))
+		return branchRef.Hash().String(), "branch", nil
 	}
 
-	if src.Commit != "" {
-		hash := plumbing.NewHash(src.Commit)
+	// Try commit SHA
+	if commitSHAPattern.MatchString(ref) {
+		hash := plumbing.NewHash(ref)
 		if err := wt.Checkout(&git.CheckoutOptions{Hash: hash}); err != nil {
-			return "", fmt.Errorf("checking out commit %q: %w", src.Commit, err)
+			return "", "", fmt.Errorf("checking out commit %q: %w", ref, err)
 		}
-		return src.Commit, nil
+		return ref, "commit", nil
 	}
 
-	// No ref specified — use HEAD (already checked out by clone)
-	head, err := repo.Head()
-	if err != nil {
-		return "", fmt.Errorf("getting HEAD: %w", err)
-	}
-	return head.Hash().String(), nil
+	return "", "", fmt.Errorf("ref %q not found as tag, branch, or commit", ref)
 }

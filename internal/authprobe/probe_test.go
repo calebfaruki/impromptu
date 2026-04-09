@@ -22,13 +22,6 @@ func TestParseGitHubSSH(t *testing.T) {
 	}
 }
 
-func TestParseGHCR(t *testing.T) {
-	host, owner, repo := ParseSourceURL("ghcr.io/alice/reviewer")
-	if host != "ghcr.io" || owner != "alice" || repo != "reviewer" {
-		t.Errorf("got %s/%s/%s", host, owner, repo)
-	}
-}
-
 func TestParseCodeberg(t *testing.T) {
 	host, owner, repo := ParseSourceURL("https://codeberg.org/alice/prompts")
 	if host != "codeberg.org" || owner != "alice" || repo != "prompts" {
@@ -59,30 +52,6 @@ func TestProbeGitHubPrivate(t *testing.T) {
 	defer srv.Close()
 
 	vis, _ := probeHTTP(context.Background(), srv.Client(), srv.URL)
-	if vis != Private {
-		t.Errorf("got %q, want private", vis)
-	}
-}
-
-func TestProbeOCIPublic(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	vis, _ := probeOCI(context.Background(), srv.Client(), srv.URL)
-	if vis != Public {
-		t.Errorf("got %q, want public", vis)
-	}
-}
-
-func TestProbeOCIPrivate(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-
-	vis, _ := probeOCI(context.Background(), srv.Client(), srv.URL)
 	if vis != Private {
 		t.Errorf("got %q, want private", vis)
 	}
@@ -124,33 +93,6 @@ func TestProbeHTTPFailureModes(t *testing.T) {
 			defer srv.Close()
 
 			vis, err := probeHTTP(context.Background(), srv.Client(), srv.URL)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if vis != Private {
-				t.Errorf("HTTP %d should be private, got %q", tc.code, vis)
-			}
-		})
-	}
-}
-
-func TestProbeOCIFailureModes(t *testing.T) {
-	codes := []struct {
-		name string
-		code int
-	}{
-		{"rate_limited", http.StatusTooManyRequests},
-		{"server_error", http.StatusInternalServerError},
-		{"service_unavailable", http.StatusServiceUnavailable},
-	}
-	for _, tc := range codes {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tc.code)
-			}))
-			defer srv.Close()
-
-			vis, err := probeOCI(context.Background(), srv.Client(), srv.URL)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

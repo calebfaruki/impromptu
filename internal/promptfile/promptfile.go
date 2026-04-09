@@ -4,28 +4,19 @@ package promptfile
 type SourceKind string
 
 const (
-	SourceGit SourceKind = "git"
-	SourceOCI SourceKind = "oci"
+	SourceGit     SourceKind = "git"
+	SourceRelease SourceKind = "release"
 )
 
 // Source describes where a prompt dependency comes from.
 type Source struct {
-	Kind SourceKind
-
-	// Git
-	Git    string
-	Tag    string
-	Branch string
-	Commit string
-	Path   string
-
-	// OCI
-	OCI    string
-	OCITag string
-	Digest string
-
-	// Inline: single-file prompt placed directly in cwd
-	Inline bool
+	Kind    SourceKind
+	Git     string // required: HTTPS or SSH URL
+	Ref     string // clone mode: tag, branch, or commit SHA
+	Release string // release mode: release tag name
+	Path    string // clone only: subdirectory within repo
+	Asset   string // release only: non-standard asset filename
+	Inline  bool
 }
 
 // Promptfile represents a parsed Promptfile.

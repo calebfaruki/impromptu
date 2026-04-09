@@ -31,8 +31,6 @@ func ProbeWithClient(ctx context.Context, sourceURL string, client *http.Client)
 		return probeHTTP(ctx, client, fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo))
 	case "codeberg.org":
 		return probeHTTP(ctx, client, fmt.Sprintf("https://codeberg.org/api/v1/repos/%s/%s", owner, repo))
-	case "ghcr.io":
-		return probeOCI(ctx, client, fmt.Sprintf("https://ghcr.io/v2/%s/%s/manifests/latest", owner, repo))
 	default:
 		return Private, nil
 	}
@@ -40,24 +38,6 @@ func ProbeWithClient(ctx context.Context, sourceURL string, client *http.Client)
 
 func probeHTTP(ctx context.Context, client *http.Client, url string) (Visibility, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return Private, fmt.Errorf("creating request: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return Private, nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		return Public, nil
-	}
-	return Private, nil
-}
-
-func probeOCI(ctx context.Context, client *http.Client, url string) (Visibility, error) {
-	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
 	if err != nil {
 		return Private, fmt.Errorf("creating request: %w", err)
 	}

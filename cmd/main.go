@@ -146,7 +146,7 @@ func runPull() {
 	force := false
 	yes := false
 	inline := false
-	var gitURL, ociRef, tag, branch, commit, digest, path, alias string
+	var gitURL, ref, release, path, asset, alias string
 
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -162,35 +162,25 @@ func runPull() {
 				i++
 				gitURL = args[i]
 			}
-		case "--oci":
+		case "--ref":
 			if i+1 < len(args) {
 				i++
-				ociRef = args[i]
+				ref = args[i]
 			}
-		case "--tag":
+		case "--release":
 			if i+1 < len(args) {
 				i++
-				tag = args[i]
-			}
-		case "--branch":
-			if i+1 < len(args) {
-				i++
-				branch = args[i]
-			}
-		case "--commit":
-			if i+1 < len(args) {
-				i++
-				commit = args[i]
-			}
-		case "--digest":
-			if i+1 < len(args) {
-				i++
-				digest = args[i]
+				release = args[i]
 			}
 		case "--path":
 			if i+1 < len(args) {
 				i++
 				path = args[i]
+			}
+		case "--asset":
+			if i+1 < len(args) {
+				i++
+				asset = args[i]
 			}
 		case "--as":
 			if i+1 < len(args) {
@@ -221,8 +211,8 @@ func runPull() {
 
 	var result *pull.Result
 	var err error
-	if gitURL != "" || ociRef != "" {
-		src, srcErr := promptfile.SourceFromFlags(gitURL, ociRef, tag, branch, commit, digest, path, inline)
+	if gitURL != "" {
+		src, srcErr := promptfile.SourceFromFlags(gitURL, ref, release, path, asset, inline)
 		if srcErr != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", srcErr)
 			os.Exit(1)
@@ -355,22 +345,20 @@ func printHelp() {
 
 Commands:
   init       Create a new Promptfile in the current directory
-  pull       Fetch prompt dependencies (or add a new one with --git/--oci)
+  pull       Fetch prompt dependencies (or add a new one with --git)
   search     Search the index for prompts
   update     Check for newer versions of dependencies
   remove     Remove a dependency
 
 Pull flags:
   --git <url>       Git repository URL
-  --oci <ref>       OCI image reference
-  --tag <tag>       Git tag or OCI tag
-  --branch <name>   Git branch (mutable, requires --force)
-  --commit <sha>    Git commit SHA
-  --digest <hash>   OCI digest pin
-  --path <dir>      Subdirectory within git repo
+  --ref <ref>       Clone mode: tag, branch, or commit SHA (auto-detected)
+  --release <tag>   Release mode: download signed release assets
+  --path <dir>      Subdirectory within git repo (clone mode only)
+  --asset <file>    Non-standard asset filename (release mode only)
   --inline          Place single-file prompt in cwd instead of subdirectory
   --as <alias>      Override default alias name
-  --force           Bypass security checks (unsigned, mutable refs, cooldown)
+  --force           Bypass security checks (unsigned, mutable refs)
   --yes             Skip confirmation prompts (CI mode)
 
 Environment:

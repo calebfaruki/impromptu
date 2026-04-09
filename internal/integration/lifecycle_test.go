@@ -61,7 +61,7 @@ func TestFullLifecycle(t *testing.T) {
 	}
 
 	// 2. Inline pull
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1"}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1"}
 	result, err := pull.InlinePull(ctx, cfg, src, "coder")
 	if err != nil {
 		t.Fatalf("InlinePull: %v", err)
@@ -122,7 +122,7 @@ func TestMixedSources(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	pf := "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"" + gitRepo1 + "\"\ntag = \"v1\"\n\n[prompts.internal]\ngit = \"" + gitRepo2 + "\"\ntag = \"v1\"\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"" + gitRepo1 + "\"\nref = \"v1\"\n\n[prompts.internal]\ngit = \"" + gitRepo2 + "\"\nref = \"v1\"\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	result, err := pull.Pull(context.Background(), pull.Config{
@@ -148,7 +148,7 @@ func TestMixedSources(t *testing.T) {
 func TestPullFailureCleanState(t *testing.T) {
 	dir := t.TempDir()
 	// Use a nonexistent git URL that will fail to resolve
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"/nonexistent/repo/path\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"/nonexistent/repo/path\"\nref = \"v1\"\n"), 0644)
 
 	_, err := pull.Pull(context.Background(), pull.Config{
 		Dir: dir, Yes: true, Force: true,
@@ -174,7 +174,7 @@ func TestLongPromptName(t *testing.T) {
 
 	dir := t.TempDir()
 	longName := strings.Repeat("a", 200)
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts."+longName+"]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts."+longName+"]\ngit = \""+repoDir+"\"\nref = \"v1\"\n"), 0644)
 
 	result, err := pull.Pull(context.Background(), pull.Config{
 		Dir: dir, Yes: true, Force: true,
@@ -199,7 +199,7 @@ func TestLockfileDigestVerification(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n"), 0644)
 
 	// First pull to get correct digest
 	_, err := pull.Pull(context.Background(), pull.Config{
@@ -236,8 +236,8 @@ func TestInlineAndDirectoryMixed(t *testing.T) {
 
 	dir := t.TempDir()
 	pf := "version = 1\n\n[prompts]\n" +
-		"[prompts.claude]\ngit = \"" + inlineRepo + "\"\ntag = \"v1\"\ninline = true\n\n" +
-		"[prompts.coder]\ngit = \"" + dirRepo + "\"\ntag = \"v1\"\n"
+		"[prompts.claude]\ngit = \"" + inlineRepo + "\"\nref = \"v1\"\ninline = true\n\n" +
+		"[prompts.coder]\ngit = \"" + dirRepo + "\"\nref = \"v1\"\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	result, err := pull.Pull(context.Background(), pull.Config{
@@ -303,7 +303,7 @@ func TestFullV3Lifecycle(t *testing.T) {
 	}
 
 	// 2. Inline pull (single file placed in cwd)
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: singleFileRepo, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: singleFileRepo, Ref: "v1", Inline: true}
 	result, err := pull.InlinePull(ctx, cfg, src, "claude")
 	if err != nil {
 		t.Fatalf("InlinePull: %v", err)
@@ -316,7 +316,7 @@ func TestFullV3Lifecycle(t *testing.T) {
 	}
 
 	// 3. Pull directory dep
-	src2 := promptfile.Source{Kind: promptfile.SourceGit, Git: dirRepo, Tag: "v1"}
+	src2 := promptfile.Source{Kind: promptfile.SourceGit, Git: dirRepo, Ref: "v1"}
 	result, err = pull.InlinePull(ctx, cfg, src2, "coder")
 	if err != nil {
 		t.Fatalf("InlinePull for dir dep: %v", err)
@@ -374,7 +374,7 @@ func TestFullV3Lifecycle(t *testing.T) {
 // TestPullFailureNoPartialInline proves a failed inline pull leaves no files behind.
 func TestPullFailureNoPartialInline(t *testing.T) {
 	dir := t.TempDir()
-	pf := "version = 1\n\n[prompts]\n[prompts.broken]\ngit = \"/nonexistent/repo/path\"\ntag = \"v1\"\ninline = true\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.broken]\ngit = \"/nonexistent/repo/path\"\nref = \"v1\"\ninline = true\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	_, err := pull.Pull(context.Background(), pull.Config{

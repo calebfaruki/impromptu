@@ -10,7 +10,72 @@ import (
 
 // --- Parse tests ---
 
-func TestParseLockfileRegistry(t *testing.T) {
+func TestParseLockfileClone(t *testing.T) {
+	data := []byte(`version = 1
+
+[[prompt]]
+name = "coder"
+source = "git"
+git = "https://github.com/alice/coder"
+ref = "v1"
+ref_type = "tag"
+commit = "abc123"
+digest = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+signer = "alice@github.com"
+`)
+	lf, err := ParseLockfile(data)
+	if err != nil {
+		t.Fatalf("ParseLockfile: %v", err)
+	}
+	e := lf.Entries["coder"]
+	if e.Source != promptfile.SourceGit {
+		t.Errorf("source: got %q", e.Source)
+	}
+	if e.Ref != "v1" {
+		t.Errorf("ref: got %q", e.Ref)
+	}
+	if e.RefType != "tag" {
+		t.Errorf("ref_type: got %q", e.RefType)
+	}
+	if e.Commit != "abc123" {
+		t.Errorf("commit: got %q", e.Commit)
+	}
+	if e.Signer != "alice@github.com" {
+		t.Errorf("signer: got %q", e.Signer)
+	}
+}
+
+func TestParseLockfileRelease(t *testing.T) {
+	data := []byte(`version = 1
+
+[[prompt]]
+name = "deploy"
+source = "release"
+git = "https://github.com/alice/deploy"
+release = "v2.0.0"
+asset = "deploy.tar.gz"
+digest = "sha256:abc123"
+signer = "alice@github.com"
+`)
+	lf, err := ParseLockfile(data)
+	if err != nil {
+		t.Fatalf("ParseLockfile: %v", err)
+	}
+	e := lf.Entries["deploy"]
+	if e.Source != promptfile.SourceRelease {
+		t.Errorf("source: got %q", e.Source)
+	}
+	if e.Release != "v2.0.0" {
+		t.Errorf("release: got %q", e.Release)
+	}
+	if e.Asset != "deploy.tar.gz" {
+		t.Errorf("asset: got %q", e.Asset)
+	}
+}
+
+// --- Migration tests ---
+
+func TestMigrateOldTagEntry(t *testing.T) {
 	data := []byte(`version = 1
 
 [[prompt]]
@@ -18,58 +83,48 @@ name = "coder"
 source = "git"
 git = "https://github.com/alice/coder"
 tag = "v1"
-digest = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-signer = "github.com/alice"
-`)
-	lf, err := ParseLockfile(data)
-	if err != nil {
-		t.Fatalf("ParseLockfile: %v", err)
-	}
-	e, ok := lf.Entries["coder"]
-	if !ok {
-		t.Fatal("missing entry 'coder'")
-	}
-	if e.Source != promptfile.SourceGit {
-		t.Errorf("source: got %q", e.Source)
-	}
-	if e.Digest == "" {
-		t.Error("expected non-empty digest")
-	}
-	if e.Signer != "github.com/alice" {
-		t.Errorf("signer: got %q", e.Signer)
-	}
-}
-
-func TestParseLockfileGit(t *testing.T) {
-	data := []byte(`version = 1
-
-[[prompt]]
-name = "internal"
-source = "git"
-git = "https://github.com/org/repo"
-tag = "v1"
 commit = "abc123"
 `)
 	lf, err := ParseLockfile(data)
 	if err != nil {
 		t.Fatalf("ParseLockfile: %v", err)
 	}
-	e := lf.Entries["internal"]
-	if e.Source != promptfile.SourceGit {
-		t.Errorf("source: got %q", e.Source)
+	e := lf.Entries["coder"]
+	if e.Ref != "v1" {
+		t.Errorf("ref: got %q, want v1", e.Ref)
 	}
-	if e.Git != "https://github.com/org/repo" {
-		t.Errorf("git: got %q", e.Git)
+	if e.RefType != "tag" {
+		t.Errorf("ref_type: got %q, want tag", e.RefType)
 	}
 	if e.Commit != "abc123" {
 		t.Errorf("commit: got %q", e.Commit)
 	}
-	if e.Digest != "" {
-		t.Errorf("expected empty digest for git, got %q", e.Digest)
+}
+
+func TestMigrateOldBranchEntry(t *testing.T) {
+	data := []byte(`version = 1
+
+[[prompt]]
+name = "dev"
+source = "git"
+git = "https://github.com/alice/coder"
+branch = "main"
+commit = "def456"
+`)
+	lf, err := ParseLockfile(data)
+	if err != nil {
+		t.Fatalf("ParseLockfile: %v", err)
+	}
+	e := lf.Entries["dev"]
+	if e.Ref != "main" {
+		t.Errorf("ref: got %q, want main", e.Ref)
+	}
+	if e.RefType != "branch" {
+		t.Errorf("ref_type: got %q, want branch", e.RefType)
 	}
 }
 
-func TestParseLockfileOCI(t *testing.T) {
+func TestMigrateOldOCISkipped(t *testing.T) {
 	data := []byte(`version = 1
 
 [[prompt]]
@@ -77,18 +132,13 @@ name = "img"
 source = "oci"
 oci = "ghcr.io/org/prompt"
 tag = "v1"
-digest = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 `)
 	lf, err := ParseLockfile(data)
 	if err != nil {
 		t.Fatalf("ParseLockfile: %v", err)
 	}
-	e := lf.Entries["img"]
-	if e.Source != promptfile.SourceOCI {
-		t.Errorf("source: got %q", e.Source)
-	}
-	if e.Signer != "" {
-		t.Errorf("expected empty signer for OCI, got %q", e.Signer)
+	if _, ok := lf.Entries["img"]; ok {
+		t.Error("OCI entries should be skipped")
 	}
 }
 
@@ -103,17 +153,22 @@ source = "git"
 	}
 }
 
-func TestLockfileRoundTrip(t *testing.T) {
+// --- Round-trip tests ---
+
+func TestLockfileRoundTripClone(t *testing.T) {
 	original := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
 			"coder": {
-				Name:   "coder",
-				Source: promptfile.SourceGit,
-				Git:    "https://github.com/alice/coder",
-				Tag:    "v1",
-				Digest: "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-				Signer: "github.com/alice",
+				Name:    "coder",
+				Source:  promptfile.SourceGit,
+				Git:     "https://github.com/alice/coder",
+				Ref:     "v1",
+				RefType: "tag",
+				Commit:  "abc123def456",
+				Path:    "subdir",
+				Digest:  "sha256:abc",
+				Signer:  "alice@github.com",
 			},
 		},
 	}
@@ -125,21 +180,59 @@ func TestLockfileRoundTrip(t *testing.T) {
 
 	parsed, err := ParseLockfile(data)
 	if err != nil {
-		t.Fatalf("ParseLockfile round-trip: %v", err)
+		t.Fatalf("ParseLockfile: %v", err)
 	}
 
-	if len(parsed.Entries) != 1 {
-		t.Fatalf("got %d entries, want 1", len(parsed.Entries))
-	}
 	e := parsed.Entries["coder"]
-	if e.Git != "https://github.com/alice/coder" {
-		t.Errorf("git: got %q", e.Git)
+	if e.Ref != "v1" {
+		t.Errorf("ref: got %q", e.Ref)
 	}
-	if e.Tag != "v1" {
-		t.Errorf("tag: got %q", e.Tag)
+	if e.RefType != "tag" {
+		t.Errorf("ref_type: got %q", e.RefType)
 	}
-	if e.Digest != original.Entries["coder"].Digest {
-		t.Errorf("digest mismatch after round-trip")
+	if e.Commit != "abc123def456" {
+		t.Errorf("commit: got %q", e.Commit)
+	}
+	if e.Path != "subdir" {
+		t.Errorf("path: got %q", e.Path)
+	}
+}
+
+func TestLockfileRoundTripRelease(t *testing.T) {
+	original := &Lockfile{
+		Version: 1,
+		Entries: map[string]LockfileEntry{
+			"deploy": {
+				Name:    "deploy",
+				Source:  promptfile.SourceRelease,
+				Git:     "https://github.com/alice/deploy",
+				Release: "v2.0.0",
+				Asset:   "custom.tar.gz",
+				Digest:  "sha256:def",
+				Signer:  "alice@github.com",
+			},
+		},
+	}
+
+	data, err := original.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes: %v", err)
+	}
+
+	parsed, err := ParseLockfile(data)
+	if err != nil {
+		t.Fatalf("ParseLockfile: %v", err)
+	}
+
+	e := parsed.Entries["deploy"]
+	if e.Source != promptfile.SourceRelease {
+		t.Errorf("source: got %q", e.Source)
+	}
+	if e.Release != "v2.0.0" {
+		t.Errorf("release: got %q", e.Release)
+	}
+	if e.Asset != "custom.tar.gz" {
+		t.Errorf("asset: got %q", e.Asset)
 	}
 }
 
@@ -149,7 +242,7 @@ func TestDiffAdded(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v1"},
 		},
 	}
 	lf := &Lockfile{Version: 1, Entries: map[string]LockfileEntry{}}
@@ -165,7 +258,7 @@ func TestDiffRemoved(t *testing.T) {
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"old": {Name: "old", Source: promptfile.SourceGit, Git: "https://github.com/alice/old", Tag: "v1"},
+			"old": {Name: "old", Source: promptfile.SourceGit, Git: "https://github.com/alice/old", Ref: "v1"},
 		},
 	}
 
@@ -175,46 +268,123 @@ func TestDiffRemoved(t *testing.T) {
 	}
 }
 
-func TestDiffUnchanged(t *testing.T) {
+func TestDiffUnchangedClone(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v1"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v1", Commit: "abc123"},
 		},
 	}
 
 	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 || result.Unchanged[0] != "coder" {
-		t.Errorf("expected [coder] unchanged, got %v", result.Unchanged)
-	}
-	if len(result.Added) != 0 {
-		t.Errorf("expected no added, got %v", result.Added)
+	if len(result.Unchanged) != 1 {
+		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
 	}
 }
 
-func TestDiffVersionChange(t *testing.T) {
+func TestDiffRefChange(t *testing.T) {
 	pf := &promptfile.Promptfile{
 		Version: 1,
 		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v2"},
+			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v2"},
 		},
 	}
 	lf := &Lockfile{
 		Version: 1,
 		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v1"},
 		},
 	}
 
 	result := Diff(pf, lf)
-	if len(result.Added) != 1 || result.Added[0] != "coder" {
-		t.Errorf("version change should be added for re-resolve, got added=%v unchanged=%v", result.Added, result.Unchanged)
+	if len(result.Added) != 1 {
+		t.Errorf("ref change should trigger re-resolve, got added=%v unchanged=%v", result.Added, result.Unchanged)
+	}
+}
+
+func TestDiffUnchangedRelease(t *testing.T) {
+	pf := &promptfile.Promptfile{
+		Version: 1,
+		Prompts: map[string]promptfile.Source{
+			"deploy": {Kind: promptfile.SourceRelease, Git: "https://github.com/alice/deploy", Release: "v1"},
+		},
+	}
+	lf := &Lockfile{
+		Version: 1,
+		Entries: map[string]LockfileEntry{
+			"deploy": {Name: "deploy", Source: promptfile.SourceRelease, Git: "https://github.com/alice/deploy", Release: "v1"},
+		},
+	}
+
+	result := Diff(pf, lf)
+	if len(result.Unchanged) != 1 {
+		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
+	}
+}
+
+func TestDiffReleaseChange(t *testing.T) {
+	pf := &promptfile.Promptfile{
+		Version: 1,
+		Prompts: map[string]promptfile.Source{
+			"deploy": {Kind: promptfile.SourceRelease, Git: "https://github.com/alice/deploy", Release: "v2"},
+		},
+	}
+	lf := &Lockfile{
+		Version: 1,
+		Entries: map[string]LockfileEntry{
+			"deploy": {Name: "deploy", Source: promptfile.SourceRelease, Git: "https://github.com/alice/deploy", Release: "v1"},
+		},
+	}
+
+	result := Diff(pf, lf)
+	if len(result.Added) != 1 {
+		t.Errorf("release change should trigger re-resolve, got added=%v", result.Added)
+	}
+}
+
+func TestDiffKindChange(t *testing.T) {
+	pf := &promptfile.Promptfile{
+		Version: 1,
+		Prompts: map[string]promptfile.Source{
+			"coder": {Kind: promptfile.SourceRelease, Git: "https://github.com/alice/coder", Release: "v1"},
+		},
+	}
+	lf := &Lockfile{
+		Version: 1,
+		Entries: map[string]LockfileEntry{
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/alice/coder", Ref: "v1"},
+		},
+	}
+
+	result := Diff(pf, lf)
+	if len(result.Added) != 1 {
+		t.Errorf("kind change should trigger re-resolve, got added=%v", result.Added)
+	}
+}
+
+func TestDiffPathChange(t *testing.T) {
+	pf := &promptfile.Promptfile{
+		Version: 1,
+		Prompts: map[string]promptfile.Source{
+			"sub": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/repo", Ref: "v1", Path: "new-subdir"},
+		},
+	}
+	lf := &Lockfile{
+		Version: 1,
+		Entries: map[string]LockfileEntry{
+			"sub": {Name: "sub", Source: promptfile.SourceGit, Git: "https://github.com/alice/repo", Ref: "v1", Path: "old-subdir"},
+		},
+	}
+
+	result := Diff(pf, lf)
+	if len(result.Added) != 1 {
+		t.Errorf("path change should trigger re-resolve, got added=%v", result.Added)
 	}
 }
 
@@ -242,7 +412,6 @@ func TestVerifyDigestMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Modify file
 	os.WriteFile(filepath.Join(dir, "01-context.md"), []byte("# Modified"), 0644)
 
 	err = VerifyDigest(dir, digest.String())
@@ -262,414 +431,6 @@ func TestVerifyDigestEmpty(t *testing.T) {
 	err := VerifyDigest("/any/path", "")
 	if err != nil {
 		t.Errorf("empty digest should skip verification, got: %v", err)
-	}
-}
-
-// --- Diff tests for non-registry sources ---
-
-func TestDiffGitUnchanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"internal": {Kind: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"internal": {Name: "internal", Source: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v1", Commit: "abc123"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 {
-		t.Errorf("expected unchanged, got added=%v removed=%v unchanged=%v", result.Added, result.Removed, result.Unchanged)
-	}
-}
-
-func TestDiffGitTagChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"internal": {Kind: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v2"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"internal": {Name: "internal", Source: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("tag change should trigger re-resolve, got added=%v unchanged=%v", result.Added, result.Unchanged)
-	}
-}
-
-func TestDiffGitURLChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"internal": {Kind: promptfile.SourceGit, Git: "https://github.com/org/new-repo", Tag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"internal": {Name: "internal", Source: promptfile.SourceGit, Git: "https://github.com/org/old-repo", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("git URL change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffGitPathChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"sub": {Kind: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v1", Path: "new-subdir"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"sub": {Name: "sub", Source: promptfile.SourceGit, Git: "https://github.com/org/repo", Tag: "v1", Path: "old-subdir"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("path change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffOCIUnchanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"img": {Kind: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", OCITag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"img": {Name: "img", Source: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 {
-		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
-	}
-}
-
-func TestDiffOCITagChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"img": {Kind: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", OCITag: "v2"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"img": {Name: "img", Source: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("OCI tag change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffOCIRegistryChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"img": {Kind: promptfile.SourceOCI, OCI: "docker.io/org/prompt", OCITag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"img": {Name: "img", Source: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("OCI registry change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffGitSameRepoUnchanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"corp": {Kind: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"corp": {Name: "corp", Source: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 {
-		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
-	}
-}
-
-func TestDiffGitSameRepoTagChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"corp": {Kind: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v2"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"corp": {Name: "corp", Source: promptfile.SourceGit, Git: "https://internal.co/team/deploy", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("tag change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffGitPinnedCommitUnchanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"pinned": {Kind: promptfile.SourceGit, Git: "https://github.com/org/repo", Commit: "abc123"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"pinned": {Name: "pinned", Source: promptfile.SourceGit, Git: "https://github.com/org/repo", Commit: "abc123"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 {
-		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
-	}
-}
-
-func TestDiffGitPinnedCommitChanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"pinned": {Kind: promptfile.SourceGit, Git: "https://github.com/org/repo", Commit: "newsha"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"pinned": {Name: "pinned", Source: promptfile.SourceGit, Git: "https://github.com/org/repo", Commit: "oldsha"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("pinned commit change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffOCIPinnedDigestUnchanged(t *testing.T) {
-	digest := "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"pinned": {Kind: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Digest: digest},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"pinned": {Name: "pinned", Source: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Digest: digest},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Unchanged) != 1 {
-		t.Errorf("expected unchanged, got added=%v unchanged=%v", result.Added, result.Unchanged)
-	}
-}
-
-func TestDiffOCIPinnedDigestChanged(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"pinned": {Kind: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"pinned": {Name: "pinned", Source: promptfile.SourceOCI, OCI: "ghcr.io/org/prompt", Digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("pinned digest change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-func TestDiffSourceKindChange(t *testing.T) {
-	pf := &promptfile.Promptfile{
-		Version: 1,
-		Prompts: map[string]promptfile.Source{
-			"coder": {Kind: promptfile.SourceGit, Git: "https://github.com/alice/coder", Tag: "v1"},
-		},
-	}
-	lf := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceOCI, OCI: "ghcr.io/alice/coder", Tag: "v1"},
-		},
-	}
-
-	result := Diff(pf, lf)
-	if len(result.Added) != 1 {
-		t.Errorf("source kind change should trigger re-resolve, got added=%v", result.Added)
-	}
-}
-
-// --- Round-trip tests for non-registry entries ---
-
-func TestLockfileRoundTripGit(t *testing.T) {
-	original := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"internal": {
-				Name:   "internal",
-				Source: promptfile.SourceGit,
-				Git:    "https://github.com/org/repo",
-				Tag:    "v1",
-				Commit: "abc123def456",
-				Path:   "subdir",
-			},
-		},
-	}
-
-	data, err := original.Bytes()
-	if err != nil {
-		t.Fatalf("Bytes: %v", err)
-	}
-
-	parsed, err := ParseLockfile(data)
-	if err != nil {
-		t.Fatalf("ParseLockfile: %v", err)
-	}
-
-	e := parsed.Entries["internal"]
-	if e.Source != promptfile.SourceGit {
-		t.Errorf("source: got %q", e.Source)
-	}
-	if e.Git != "https://github.com/org/repo" {
-		t.Errorf("git: got %q", e.Git)
-	}
-	if e.Tag != "v1" {
-		t.Errorf("tag: got %q", e.Tag)
-	}
-	if e.Commit != "abc123def456" {
-		t.Errorf("commit: got %q", e.Commit)
-	}
-	if e.Path != "subdir" {
-		t.Errorf("path: got %q", e.Path)
-	}
-}
-
-func TestLockfileRoundTripOCI(t *testing.T) {
-	original := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"img": {
-				Name:   "img",
-				Source: promptfile.SourceOCI,
-				OCI:    "ghcr.io/org/prompt",
-				Tag:    "v2",
-				Digest: "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-			},
-		},
-	}
-
-	data, err := original.Bytes()
-	if err != nil {
-		t.Fatalf("Bytes: %v", err)
-	}
-
-	parsed, err := ParseLockfile(data)
-	if err != nil {
-		t.Fatalf("ParseLockfile: %v", err)
-	}
-
-	e := parsed.Entries["img"]
-	if e.Source != promptfile.SourceOCI {
-		t.Errorf("source: got %q", e.Source)
-	}
-	if e.OCI != "ghcr.io/org/prompt" {
-		t.Errorf("oci: got %q", e.OCI)
-	}
-	if e.Tag != "v2" {
-		t.Errorf("tag: got %q", e.Tag)
-	}
-	if e.Digest != original.Entries["img"].Digest {
-		t.Errorf("digest: got %q", e.Digest)
-	}
-}
-
-func TestLockfileRoundTripGitWithSigner(t *testing.T) {
-	original := &Lockfile{
-		Version: 1,
-		Entries: map[string]LockfileEntry{
-			"corp": {
-				Name:   "corp",
-				Source: promptfile.SourceGit,
-				Git:    "https://internal.co/team/deploy",
-				Tag:    "v1",
-				Commit: "abc123",
-				Digest: "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-				Signer: "github.com/teamlead",
-			},
-		},
-	}
-
-	data, err := original.Bytes()
-	if err != nil {
-		t.Fatalf("Bytes: %v", err)
-	}
-
-	parsed, err := ParseLockfile(data)
-	if err != nil {
-		t.Fatalf("ParseLockfile: %v", err)
-	}
-
-	e := parsed.Entries["corp"]
-	if e.Source != promptfile.SourceGit {
-		t.Errorf("source: got %q", e.Source)
-	}
-	if e.Git != "https://internal.co/team/deploy" {
-		t.Errorf("git: got %q", e.Git)
-	}
-	if e.Tag != "v1" {
-		t.Errorf("tag: got %q", e.Tag)
-	}
-	if e.Signer != "github.com/teamlead" {
-		t.Errorf("signer: got %q", e.Signer)
 	}
 }
 

@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint muttest check
+.PHONY: build test fmt lint muttest check serve
 
 build:
 	go build -o bin/impromptu ./cmd/...
@@ -18,3 +18,6 @@ muttest:
 
 check: build
 	./bin/impromptu check $(DIR)
+
+serve: build
+	./bin/impromptu serve --dev

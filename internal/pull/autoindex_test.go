@@ -64,22 +64,6 @@ func TestMaybeIndexSignedPublicCodeberg(t *testing.T) {
 	}
 }
 
-func TestMaybeIndexSignedPublicGHCR(t *testing.T) {
-	srv, received := mockIndexServer(t)
-	defer srv.Close()
-
-	warnings := MaybeIndex(context.Background(), srv.URL,
-		"ghcr.io/alice/reviewer", "sha256:abc",
-		signedSearcher("sha256:abc", "alice@github.com", 5))
-
-	if len(warnings) > 0 {
-		t.Errorf("expected no warnings, got: %v", warnings)
-	}
-	if len(*received) != 1 {
-		t.Fatal("expected 1 submission")
-	}
-}
-
 func TestMaybeIndexUnsigned(t *testing.T) {
 	srv, received := mockIndexServer(t)
 	defer srv.Close()

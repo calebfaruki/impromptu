@@ -4,152 +4,123 @@ import (
 	"fmt"
 	"path"
 	"strings"
+
+	"github.com/calebfaruki/impromptu/internal/authprobe"
 )
 
-// parseSource detects the source type from a TOML table entry.
+var allowedHosts = map[string]bool{
+	"github.com":   true,
+	"codeberg.org": true,
+}
+
 func parseSource(raw map[string]any) (Source, error) {
-	_, hasGit := raw["git"].(string)
-	_, hasOCI := raw["oci"].(string)
-
-	if hasGit && hasOCI {
-		return Source{}, fmt.Errorf("entry cannot have both git and oci")
+	if _, hasOCI := raw["oci"].(string); hasOCI {
+		return Source{}, fmt.Errorf("OCI sources are not supported; use git clone or release")
 	}
 
-	if hasGit {
-		return parseGitSource(raw["git"].(string), raw)
-	}
-	if hasOCI {
-		return parseOCISource(raw["oci"].(string), raw)
+	gitURL, hasGit := raw["git"].(string)
+	if !hasGit {
+		return Source{}, fmt.Errorf("entry must have git key")
 	}
 
-	return Source{}, fmt.Errorf("entry must have git or oci key")
+	return parseGitSource(gitURL, raw)
 }
 
 func parseGitSource(gitURL string, raw map[string]any) (Source, error) {
-	s := Source{Kind: SourceGit, Git: gitURL}
+	ref, _ := raw["ref"].(string)
+	release, _ := raw["release"].(string)
+	p, _ := raw["path"].(string)
+	asset, _ := raw["asset"].(string)
+	inline, _ := raw["inline"].(bool)
 
-	tag, _ := raw["tag"].(string)
-	branch, _ := raw["branch"].(string)
-	commit, _ := raw["commit"].(string)
-
-	refCount := 0
-	if tag != "" {
-		refCount++
-		s.Tag = tag
+	if ref != "" && release != "" {
+		return Source{}, fmt.Errorf("ref and release are mutually exclusive")
 	}
-	if branch != "" {
-		refCount++
-		s.Branch = branch
+	if ref == "" && release == "" {
+		return Source{}, fmt.Errorf("entry must have ref or release")
 	}
-	if commit != "" {
-		refCount++
-		s.Commit = commit
+	if release != "" && p != "" {
+		return Source{}, fmt.Errorf("path is not valid on release entries")
 	}
-	if refCount > 1 {
-		return Source{}, fmt.Errorf("git source must have at most one of tag, branch, or commit")
+	if ref != "" && asset != "" {
+		return Source{}, fmt.Errorf("asset is not valid on clone entries")
 	}
 
-	if p, ok := raw["path"].(string); ok && p != "" {
+	if p != "" {
 		if err := ValidatePath(p); err != nil {
 			return Source{}, fmt.Errorf("git path: %w", err)
 		}
-		s.Path = p
 	}
 
-	if inline, ok := raw["inline"].(bool); ok {
-		s.Inline = inline
+	if release != "" {
+		return Source{
+			Kind:    SourceRelease,
+			Git:     gitURL,
+			Release: release,
+			Asset:   asset,
+			Inline:  inline,
+		}, nil
 	}
 
-	return s, nil
+	return Source{
+		Kind:   SourceGit,
+		Git:    gitURL,
+		Ref:    ref,
+		Path:   p,
+		Inline: inline,
+	}, nil
 }
 
-func parseOCISource(ociRef string, raw map[string]any) (Source, error) {
-	s := Source{Kind: SourceOCI, OCI: ociRef}
-
-	tag, _ := raw["tag"].(string)
-	digest, _ := raw["digest"].(string)
-
-	if tag != "" && digest != "" {
-		return Source{}, fmt.Errorf("OCI source must have tag or digest, not both")
+func validateGitHost(gitURL string) error {
+	host, _, _ := authprobe.ParseSourceURL(gitURL)
+	if !allowedHosts[host] {
+		return fmt.Errorf("unsupported git host %q (supported: github.com, codeberg.org)", host)
 	}
-	if tag == "" && digest == "" {
-		return Source{}, fmt.Errorf("OCI source must have tag or digest")
-	}
-
-	if _, hasPath := raw["path"].(string); hasPath {
-		return Source{}, fmt.Errorf("path is not valid for OCI sources")
-	}
-
-	if tag != "" {
-		s.OCITag = tag
-	}
-	if digest != "" {
-		s.Digest = digest
-	}
-
-	if inline, ok := raw["inline"].(bool); ok {
-		s.Inline = inline
-	}
-
-	return s, nil
+	return nil
 }
 
-// SourceFromFlags builds a Source from CLI flags and validates mutual exclusivity.
-func SourceFromFlags(git, oci, tag, branch, commit, digest, p string, inline bool) (Source, error) {
-	if git != "" && oci != "" {
-		return Source{}, fmt.Errorf("cannot specify both --git and --oci")
-	}
-	if git == "" && oci == "" {
-		return Source{}, fmt.Errorf("must specify --git or --oci")
+// SourceFromFlags builds a Source from CLI flags.
+// Validates URL scheme and host allowlist for release mode.
+func SourceFromFlags(git, ref, release, p, asset string, inline bool) (Source, error) {
+	if git == "" {
+		return Source{}, fmt.Errorf("must specify --git")
 	}
 
-	if git != "" {
-		raw := map[string]any{"git": git}
-		if tag != "" {
-			raw["tag"] = tag
-		}
-		if branch != "" {
-			raw["branch"] = branch
-		}
-		if commit != "" {
-			raw["commit"] = commit
-		}
-		if p != "" {
-			raw["path"] = p
-		}
-		if inline {
-			raw["inline"] = true
-		}
-		return parseGitSource(git, raw)
+	if !strings.HasPrefix(git, "https://") && !strings.HasPrefix(git, "git@") && !strings.HasPrefix(git, "/") {
+		return Source{}, fmt.Errorf("git URL must start with https:// or git@")
 	}
 
-	// OCI
-	raw := map[string]any{"oci": oci}
-	if tag != "" {
-		raw["tag"] = tag
+	if release != "" {
+		if err := validateGitHost(git); err != nil {
+			return Source{}, fmt.Errorf("release mode requires a supported host: %w", err)
+		}
 	}
-	if digest != "" {
-		raw["digest"] = digest
+
+	raw := map[string]any{"git": git}
+	if ref != "" {
+		raw["ref"] = ref
+	}
+	if release != "" {
+		raw["release"] = release
+	}
+	if p != "" {
+		raw["path"] = p
+	}
+	if asset != "" {
+		raw["asset"] = asset
 	}
 	if inline {
 		raw["inline"] = true
 	}
-	return parseOCISource(oci, raw)
+	return parseGitSource(git, raw)
 }
 
 // AliasFromSource derives a default alias from the source URL.
 // If a path is set, uses the last segment of the path instead.
 func AliasFromSource(src Source) string {
-	switch src.Kind {
-	case SourceGit:
-		if src.Path != "" {
-			return path.Base(src.Path)
-		}
-		base := path.Base(src.Git)
-		return strings.TrimSuffix(base, ".git")
-	case SourceOCI:
-		parts := strings.Split(src.OCI, "/")
-		return parts[len(parts)-1]
+	if src.Path != "" {
+		return path.Base(src.Path)
 	}
-	return ""
+	base := path.Base(src.Git)
+	return strings.TrimSuffix(base, ".git")
 }

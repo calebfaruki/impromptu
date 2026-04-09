@@ -98,9 +98,6 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 
 		// Auto-index: discover Rekor signature and submit to index if signed + public
 		sourceURL := src.Git
-		if src.Kind == promptfile.SourceOCI {
-			sourceURL = src.OCI
-		}
 		if cfg.Searcher != nil {
 			lookupHash := entry.Digest
 			if src.Kind == promptfile.SourceGit && entry.Commit != "" {
@@ -268,18 +265,16 @@ func resolveSource(ctx context.Context, name string, src promptfile.Source, cfg 
 		result.Entry.Digest = internaloci.ComputeDigest(blob).String()
 		return result.Entry, blob, result.Warnings, nil
 
-	case promptfile.SourceOCI:
-		or := &resolver.OCIResolver{Progress: cfg.Progress}
-		result, err := or.Resolve(ctx, src, cfg.Force)
+	case promptfile.SourceRelease:
+		rr := &resolver.ReleaseResolver{Progress: cfg.Progress}
+		result, err := rr.Resolve(ctx, src, cfg.Force)
 		if err != nil {
 			return lockfile.LockfileEntry{}, nil, nil, err
 		}
-		defer os.RemoveAll(result.CleanupDir)
-		blob, err := internaloci.PackageBytes(result.Dir)
-		if err != nil {
-			return lockfile.LockfileEntry{}, nil, nil, fmt.Errorf("packaging oci content: %w", err)
+		if result.CleanupDir != "" {
+			defer os.RemoveAll(result.CleanupDir)
 		}
-		return result.Entry, blob, result.Warnings, nil
+		return result.Entry, result.Blob, result.Warnings, nil
 
 	default:
 		return lockfile.LockfileEntry{}, nil, nil, fmt.Errorf("unsupported source kind: %s", src.Kind)
@@ -330,25 +325,18 @@ func logProgress(cfg Config, format string, args ...any) {
 }
 
 func sourceDesc(src promptfile.Source) string {
-	ref := ""
-	switch {
-	case src.Tag != "":
-		ref = "tag: " + src.Tag
-	case src.Branch != "":
-		ref = "branch: " + src.Branch
-	case src.Commit != "":
-		ref = "commit: " + src.Commit[:min(8, len(src.Commit))]
-	case src.OCITag != "":
-		ref = "tag: " + src.OCITag
-	case src.Digest != "":
-		ref = "digest: " + src.Digest[:min(19, len(src.Digest))]
+	switch src.Kind {
+	case promptfile.SourceGit:
+		if src.Ref != "" {
+			return src.Git + ", ref: " + src.Ref
+		}
+		return src.Git
+	case promptfile.SourceRelease:
+		desc := src.Git + ", release: " + src.Release
+		if src.Asset != "" {
+			desc += ", asset: " + src.Asset
+		}
+		return desc
 	}
-	url := src.Git
-	if src.Kind == promptfile.SourceOCI {
-		url = src.OCI
-	}
-	if ref != "" {
-		return url + ", " + ref
-	}
-	return url
+	return src.Git
 }

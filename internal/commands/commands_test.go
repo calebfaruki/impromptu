@@ -84,17 +84,13 @@ func TestInitExistingPromptfile(t *testing.T) {
 // --- Remove tests ---
 
 func TestRemoveExistingDep(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# test",
-	}, "v1")
-
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n"), 0644)
 
 	lf := &lockfile.Lockfile{
 		Version: 1,
 		Entries: map[string]lockfile.LockfileEntry{
-			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: repoDir, Tag: "v1"},
+			"coder": {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/test/repo", Ref: "v1"},
 		},
 	}
 	lfData, _ := lf.Bytes()
@@ -134,12 +130,8 @@ func TestRemoveNonexistent(t *testing.T) {
 }
 
 func TestRemoveLastDep(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# test",
-	}, "v1")
-
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n"), 0644)
 
 	if err := Remove(dir, "coder"); err != nil {
 		t.Fatalf("Remove: %v", err)
@@ -216,7 +208,7 @@ func TestUpdateGitDepSkipped(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	pf := "version = 1\n\n[prompts]\n[prompts.internal]\ngit = \"" + repoDir + "\"\ntag = \"v1\"\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.internal]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	result, err := Update(context.Background(), pull.Config{
@@ -267,18 +259,14 @@ func TestSearchWithSpaces(t *testing.T) {
 }
 
 func TestUpdateAllDeps(t *testing.T) {
-	repoDir := createTestRepo(t, map[string]string{
-		"01-context.md": "# test",
-	}, "v1")
-
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n\n[prompts.reviewer]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte("version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n\n[prompts.reviewer]\ngit = \"https://github.com/test/repo\"\nref = \"v1\"\n"), 0644)
 
 	lf := &lockfile.Lockfile{
 		Version: 1,
 		Entries: map[string]lockfile.LockfileEntry{
-			"coder":    {Name: "coder", Source: promptfile.SourceGit, Git: repoDir, Tag: "v1"},
-			"reviewer": {Name: "reviewer", Source: promptfile.SourceGit, Git: repoDir, Tag: "v1"},
+			"coder":    {Name: "coder", Source: promptfile.SourceGit, Git: "https://github.com/test/repo", Ref: "v1"},
+			"reviewer": {Name: "reviewer", Source: promptfile.SourceGit, Git: "https://github.com/test/repo", Ref: "v1"},
 		},
 	}
 	lfData, _ := lf.Bytes()
@@ -302,7 +290,7 @@ func TestRemoveInlineDep(t *testing.T) {
 	dir := t.TempDir()
 
 	// Set up Promptfile with an inline entry
-	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"https://github.com/alice/claude-md\"\ntag = \"v1\"\ninline = true\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"https://github.com/alice/claude-md\"\nref = \"v1\"\ninline = true\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	// Set up lockfile with inline + filename
@@ -313,7 +301,7 @@ func TestRemoveInlineDep(t *testing.T) {
 				Name:     "claude",
 				Source:   promptfile.SourceGit,
 				Git:      "https://github.com/alice/claude-md",
-				Tag:      "v1",
+				Ref:      "v1",
 				Inline:   true,
 				Filename: "CLAUDE.md",
 			},

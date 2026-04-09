@@ -15,7 +15,6 @@ import (
 var allowlistedHosts = map[string]bool{
 	"github.com":   true,
 	"codeberg.org": true,
-	"ghcr.io":      true,
 }
 
 // MaybeIndex submits metadata to the index if the source is signed and public.

@@ -69,7 +69,7 @@ func TestPullNoLockfile(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	result, err := Pull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
@@ -97,7 +97,7 @@ func TestPullMatchingLockfileNoop(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	// First pull to get the correct digest and commit
 	result, err := Pull(context.Background(), Config{
@@ -133,10 +133,10 @@ func TestPullNewDepAdded(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n\n[prompts.reviewer]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n\n[prompts.reviewer]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	// First pull to establish lockfile with only coder
-	firstPF := "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"" + repoDir + "\"\ntag = \"v1\"\n"
+	firstPF := "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n"
 	writePromptfile(t, dir, firstPF)
 	_, err := Pull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
@@ -147,7 +147,7 @@ func TestPullNewDepAdded(t *testing.T) {
 	}
 
 	// Now add reviewer to the Promptfile
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n\n[prompts.reviewer]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n\n[prompts.reviewer]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	result, err := Pull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
@@ -168,7 +168,7 @@ func TestPullDepRemoved(t *testing.T) {
 
 	dir := t.TempDir()
 	// First pull with coder
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 	_, err := Pull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -206,7 +206,7 @@ func TestPullDigestMismatchRepulls(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	// First pull
 	_, err := Pull(context.Background(), Config{
@@ -249,7 +249,7 @@ func TestPullConfirmationDeclined(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	_, err := Pull(context.Background(), Config{
 		Dir: dir, Force: true,
@@ -274,7 +274,7 @@ func TestPullYesSkipsConfirmation(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
 	result, err := Pull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
@@ -298,7 +298,7 @@ func TestInlinePull(t *testing.T) {
 	dir := t.TempDir()
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1"}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1"}
 	result, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -324,9 +324,9 @@ func TestInlinePullCollision(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v2"}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v2"}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -345,9 +345,9 @@ func TestInlinePullWithAs(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\ntag = \"v1\"\n")
+	writePromptfile(t, dir, "version = 1\n\n[prompts]\n[prompts.coder]\ngit = \""+repoDir+"\"\nref = \"v1\"\n")
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1"}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1"}
 	result, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -374,7 +374,7 @@ func TestPullGitSource(t *testing.T) {
 	}, "v1")
 
 	dir := t.TempDir()
-	pf := "version = 1\n\n[prompts]\n[prompts.internal]\ngit = \"" + repoDir + "\"\ntag = \"v1\"\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.internal]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n"
 	writePromptfile(t, dir, pf)
 
 	result, err := Pull(context.Background(), Config{
@@ -408,7 +408,7 @@ func TestInlinePullSingleFile(t *testing.T) {
 	dir := t.TempDir()
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1", Inline: true}
 	result, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -447,7 +447,7 @@ func TestInlinePullMultiFileError(t *testing.T) {
 	dir := t.TempDir()
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1", Inline: true}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -469,7 +469,7 @@ func TestInlinePullCollisionDenied(t *testing.T) {
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Existing\n"), 0644)
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1", Inline: true}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -498,7 +498,7 @@ func TestInlinePullCollisionYes(t *testing.T) {
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Old\n"), 0644)
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1", Inline: true}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -522,7 +522,7 @@ func TestPullWithoutInlineAfterInline(t *testing.T) {
 
 	// First: inline pull
 	writePromptfile(t, dir, "version = 1\n\n[prompts]\n")
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Tag: "v1", Inline: true}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: repoDir, Ref: "v1", Inline: true}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},
@@ -532,7 +532,7 @@ func TestPullWithoutInlineAfterInline(t *testing.T) {
 	}
 
 	// Now modify Promptfile to remove inline flag (simulate pulling without --inline)
-	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"" + repoDir + "\"\ntag = \"v1\"\n"
+	pf := "version = 1\n\n[prompts]\n[prompts.claude]\ngit = \"" + repoDir + "\"\nref = \"v1\"\n"
 	os.WriteFile(filepath.Join(dir, "Promptfile"), []byte(pf), 0644)
 
 	// Pull again without inline -- should error
@@ -554,7 +554,7 @@ func TestInlinePullRollbackOnFailure(t *testing.T) {
 	original := []byte("version = 1\n\n[prompts]\n")
 	os.WriteFile(pfPath, original, 0644)
 
-	src := promptfile.Source{Kind: promptfile.SourceGit, Git: "/nonexistent/repo", Tag: "v1"}
+	src := promptfile.Source{Kind: promptfile.SourceGit, Git: "/nonexistent/repo", Ref: "v1"}
 	_, err := InlinePull(context.Background(), Config{
 		Dir: dir, Yes: true, Force: true,
 		Verifier: &sigstore.FakeVerifier{},

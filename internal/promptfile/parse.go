@@ -44,7 +44,7 @@ func Parse(data []byte) (*Promptfile, error) {
 func parseEntry(entry any) (Source, error) {
 	switch v := entry.(type) {
 	case string:
-		return Source{}, fmt.Errorf("string format %q is no longer supported; use { git = \"...\", tag = \"...\" } or { oci = \"...\", tag = \"...\" } instead", v)
+		return Source{}, fmt.Errorf("string format %q is no longer supported; use { git = \"...\", ref = \"...\" } instead", v)
 	case map[string]any:
 		return parseSource(v)
 	default:
@@ -78,26 +78,18 @@ func (pf *Promptfile) Bytes() ([]byte, error) {
 func formatSource(src Source) (string, error) {
 	switch src.Kind {
 	case SourceGit:
-		return formatGitSource(src), nil
-	case SourceOCI:
-		return formatOCISource(src), nil
+		return formatCloneSource(src), nil
+	case SourceRelease:
+		return formatReleaseSource(src), nil
 	default:
 		return "", fmt.Errorf("unknown source kind %q", src.Kind)
 	}
 }
 
-func formatGitSource(src Source) string {
+func formatCloneSource(src Source) string {
 	var parts []string
 	parts = append(parts, fmt.Sprintf("git = %q", src.Git))
-	if src.Tag != "" {
-		parts = append(parts, fmt.Sprintf("tag = %q", src.Tag))
-	}
-	if src.Branch != "" {
-		parts = append(parts, fmt.Sprintf("branch = %q", src.Branch))
-	}
-	if src.Commit != "" {
-		parts = append(parts, fmt.Sprintf("commit = %q", src.Commit))
-	}
+	parts = append(parts, fmt.Sprintf("ref = %q", src.Ref))
 	if src.Path != "" {
 		parts = append(parts, fmt.Sprintf("path = %q", src.Path))
 	}
@@ -107,14 +99,12 @@ func formatGitSource(src Source) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-func formatOCISource(src Source) string {
+func formatReleaseSource(src Source) string {
 	var parts []string
-	parts = append(parts, fmt.Sprintf("oci = %q", src.OCI))
-	if src.OCITag != "" {
-		parts = append(parts, fmt.Sprintf("tag = %q", src.OCITag))
-	}
-	if src.Digest != "" {
-		parts = append(parts, fmt.Sprintf("digest = %q", src.Digest))
+	parts = append(parts, fmt.Sprintf("git = %q", src.Git))
+	parts = append(parts, fmt.Sprintf("release = %q", src.Release))
+	if src.Asset != "" {
+		parts = append(parts, fmt.Sprintf("asset = %q", src.Asset))
 	}
 	if src.Inline {
 		parts = append(parts, "inline = true")
