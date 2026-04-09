@@ -1,15 +1,12 @@
 package resolver
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -111,7 +108,7 @@ func (r *ReleaseResolver) Resolve(ctx context.Context, src promptfile.Source, fo
 		return nil, fmt.Errorf("creating temp dir: %w", err)
 	}
 
-	if err := extractTarball(tarball, tmpDir); err != nil {
+	if err := oci.UnpackageBytes(tarball, tmpDir); err != nil {
 		os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("extracting tarball: %w", err)
 	}
@@ -215,64 +212,6 @@ func verifyBundle(bundleJSON, artifact []byte) (string, error) {
 	}
 
 	return "", nil
-}
-
-// extractTarball extracts a tar or tar.gz to dir. Detects gzip by magic bytes.
-func extractTarball(data []byte, dir string) error {
-	var tr *tar.Reader
-
-	r := bytes.NewReader(data)
-	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-		gz, err := gzip.NewReader(r)
-		if err != nil {
-			return fmt.Errorf("decompressing gzip: %w", err)
-		}
-		defer gz.Close()
-		tr = tar.NewReader(gz)
-	} else {
-		tr = tar.NewReader(r)
-	}
-
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("reading tar entry: %w", err)
-		}
-
-		name := filepath.Clean(hdr.Name)
-		if strings.Contains(name, "..") {
-			return fmt.Errorf("path traversal in tar entry: %s", hdr.Name)
-		}
-
-		target := filepath.Join(dir, name)
-
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fmt.Errorf("creating directory %s: %w", name, err)
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("creating parent for %s: %w", name, err)
-			}
-			f, err := os.Create(target)
-			if err != nil {
-				return fmt.Errorf("creating file %s: %w", name, err)
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return fmt.Errorf("writing file %s: %w", name, err)
-			}
-			f.Close()
-		default:
-			return fmt.Errorf("unsupported tar entry type %d for %s", hdr.Typeflag, hdr.Name)
-		}
-	}
-
-	return nil
 }
 
 func (r *ReleaseResolver) logProgress(format string, args ...any) {

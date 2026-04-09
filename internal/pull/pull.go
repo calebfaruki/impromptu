@@ -1,7 +1,6 @@
 package pull
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -137,7 +136,7 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 			if err != nil {
 				return nil, fmt.Errorf("creating temp dir: %w", err)
 			}
-			if err := internaloci.Unpackage(bytes.NewReader(blob), tmpDir); err != nil {
+			if err := internaloci.UnpackageBytes(blob,tmpDir); err != nil {
 				os.RemoveAll(tmpDir)
 				return nil, fmt.Errorf("extracting %s: %w", name, err)
 			}
@@ -170,7 +169,7 @@ func Pull(ctx context.Context, cfg Config) (*Result, error) {
 			dir := filepath.Join(cfg.Dir, name)
 			os.RemoveAll(dir)
 			os.MkdirAll(dir, 0755)
-			if err := internaloci.Unpackage(bytes.NewReader(blob), dir); err != nil {
+			if err := internaloci.UnpackageBytes(blob,dir); err != nil {
 				return nil, fmt.Errorf("extracting %s: %w", name, err)
 			}
 		}

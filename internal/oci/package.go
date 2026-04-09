@@ -3,6 +3,7 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
@@ -108,6 +109,64 @@ func Unpackage(r io.Reader, dir string) error {
 		path := filepath.Join(dir, filepath.Base(hdr.Name))
 		if err := os.WriteFile(path, data, 0644); err != nil {
 			return fmt.Errorf("writing file %s: %w", hdr.Name, err)
+		}
+	}
+	return nil
+}
+
+// UnpackageBytes extracts a tar or tar.gz archive from raw bytes into dir.
+// Detects gzip by magic bytes. Accepts directories and regular files.
+func UnpackageBytes(data []byte, dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating directory %s: %w", dir, err)
+	}
+
+	var tr *tar.Reader
+	r := bytes.NewReader(data)
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		gz, err := gzip.NewReader(r)
+		if err != nil {
+			return fmt.Errorf("decompressing gzip: %w", err)
+		}
+		defer gz.Close()
+		tr = tar.NewReader(gz)
+	} else {
+		tr = tar.NewReader(r)
+	}
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading tar entry: %w", err)
+		}
+
+		name := filepath.Clean(hdr.Name)
+		if strings.Contains(name, "..") {
+			return fmt.Errorf("path traversal in tar entry: %s", hdr.Name)
+		}
+
+		target := filepath.Join(dir, name)
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return fmt.Errorf("creating directory %s: %w", name, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("creating parent for %s: %w", name, err)
+			}
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return fmt.Errorf("reading tar data for %s: %w", hdr.Name, err)
+			}
+			if err := os.WriteFile(target, data, 0644); err != nil {
+				return fmt.Errorf("writing file %s: %w", hdr.Name, err)
+			}
+		default:
+			return fmt.Errorf("unsupported tar entry type %d for %s", hdr.Typeflag, hdr.Name)
 		}
 	}
 	return nil
