@@ -1,4 +1,4 @@
-name: Release signed prompts
+name: Release
 
 on:
   push:
@@ -15,21 +15,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.1
 
-      - name: Package and sign prompts
+      - name: Build binaries
         run: |
           mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -ldflags="-s -w" -o "impromptu" ./cmd/impromptu
+            tar czf "dist/impromptu-${os}-${arch}.tar.gz" impromptu
+            rm impromptu
+          done
+          cd dist && sha256sum *.tar.gz > checksums.txt
+
+      - name: Package and sign prompts
+        run: |
           for dir in examples/author/prompts/*/; do
             name=$(basename "$dir")
-            # Deterministic tar: sorted, no timestamps, no owner
             tar --sort=name \
                 --mtime='1970-01-01 00:00:00Z' \
                 --owner=0 --group=0 --numeric-owner \
                 -czf "dist/${name}.tar.gz" \
                 -C "$dir" .
-            # Sign with keyless cosign (GitHub OIDC)
             cosign sign-blob --yes \
               --bundle "dist/${name}.tar.gz.sigstore.json" \
               "dist/${name}.tar.gz"

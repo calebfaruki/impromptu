@@ -1,7 +1,7 @@
 .PHONY: build test fmt lint muttest check serve
 
 build:
-	go build -o bin/impromptu ./cmd/...
+	go build -o bin/impromptu ./cmd/impromptu
 
 test:
 	go test ./...

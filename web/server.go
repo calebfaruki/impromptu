@@ -29,8 +29,10 @@ type Server struct {
 
 // NewServer creates a web server with all dependencies wired.
 func NewServer(idx *indexdb.DB, verifier sigstore.Verifier) *Server {
+	funcMap := template.FuncMap{"highlight": highlight}
+
 	layout := template.Must(
-		template.New("layout").ParseFS(templateFS, "templates/layout.html"),
+		template.New("layout").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html"),
 	)
 
 	pageNames := []string{

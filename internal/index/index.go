@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -12,6 +13,9 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var MigrationsFS embed.FS
 
 // DB wraps a SQLite database connection for the prompt index.
 type DB struct {

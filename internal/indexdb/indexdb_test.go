@@ -4,11 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/calebfaruki/impromptu/internal/index"
 	_ "modernc.org/sqlite"
 )
 
@@ -22,13 +21,12 @@ func testDB(t *testing.T) *DB {
 
 	db.Exec("PRAGMA foreign_keys=ON")
 
-	rootFS := os.DirFS(filepath.Join("..", "..", "."))
-	entries, _ := fs.ReadDir(rootFS, "migrations")
+	entries, _ := fs.ReadDir(index.MigrationsFS, "migrations")
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".sql") {
 			continue
 		}
-		content, _ := fs.ReadFile(rootFS, "migrations/"+e.Name())
+		content, _ := fs.ReadFile(index.MigrationsFS, "migrations/"+e.Name())
 		if _, err := db.Exec(string(content)); err != nil {
 			t.Fatalf("migration %s: %v", e.Name(), err)
 		}

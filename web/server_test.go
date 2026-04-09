@@ -8,10 +8,10 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
+	"github.com/calebfaruki/impromptu/internal/index"
 	"github.com/calebfaruki/impromptu/internal/indexdb"
 	"github.com/calebfaruki/impromptu/internal/sigstore"
 	_ "modernc.org/sqlite"
@@ -27,8 +27,7 @@ func testServer(t *testing.T) (*Server, *indexdb.DB, *sigstore.FakeVerifier) {
 
 	db.Exec("PRAGMA foreign_keys=ON")
 
-	rootFS := os.DirFS("..")
-	entries, err := fs.ReadDir(rootFS, "migrations")
+	entries, err := fs.ReadDir(index.MigrationsFS, "migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +35,7 @@ func testServer(t *testing.T) (*Server, *indexdb.DB, *sigstore.FakeVerifier) {
 		if !strings.HasSuffix(e.Name(), ".sql") {
 			continue
 		}
-		content, err := fs.ReadFile(rootFS, "migrations/"+e.Name())
+		content, err := fs.ReadFile(index.MigrationsFS, "migrations/"+e.Name())
 		if err != nil {
 			t.Fatal(err)
 		}

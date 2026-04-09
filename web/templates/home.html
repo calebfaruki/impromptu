@@ -14,30 +14,35 @@
 <h2>Quick start</h2>
 
 <p>Install:</p>
-<pre>go install github.com/calebfaruki/impromptu/cmd@latest</pre>
+{{ highlight `# macOS / Linux
+curl -fsSL https://github.com/calebfaruki/impromptu/releases/latest/download/impromptu-$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz
+sudo mv impromptu /usr/local/bin/
 
-<pre>impromptu init
+# or with Go
+go install github.com/calebfaruki/impromptu/cmd/impromptu@latest` "bash" }}
 
-<span class="comment"># latest</span>
+{{ highlight `impromptu init
+
+# latest
 impromptu pull https://github.com/anthropics/prompts
 
-<span class="comment"># tag</span>
+# tag
 impromptu pull https://github.com/anthropics/prompts --ref v1
 
-<span class="comment"># commit</span>
+# commit
 impromptu pull https://github.com/anthropics/prompts --ref a1b2c3d
 
-<span class="comment"># signed release</span>
+# signed release
 impromptu pull https://github.com/anthropics/prompts --release v1
 
-<span class="comment"># subdirectory from a monorepo</span>
+# subdirectory from a monorepo
 impromptu pull https://github.com/anthropics/prompts --ref v1 --path code-review
 
-<span class="comment"># custom alias</span>
+# custom alias
 impromptu pull https://github.com/anthropics/prompts --ref v1 --as reviewer
 
-<span class="comment"># inline a single file into your working directory</span>
-impromptu pull https://github.com/anthropics/prompts --ref v1 --path claude-md --inline</pre>
+# inline a single file into your working directory
+impromptu pull https://github.com/anthropics/prompts --ref v1 --path claude-md --inline` "bash" }}
 
 <h2>How it works</h2>
 

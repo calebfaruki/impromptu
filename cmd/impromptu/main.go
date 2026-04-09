@@ -89,8 +89,7 @@ func runServe(dev bool) {
 	}
 	defer legacyDB.Close()
 
-	migrations := os.DirFS(".")
-	if err := index.Migrate(context.Background(), legacyDB, migrations); err != nil {
+	if err := index.Migrate(context.Background(), legacyDB, index.MigrationsFS); err != nil {
 		fatal("running migrations: %v", err)
 	}
 

@@ -2,8 +2,6 @@ package index
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -14,7 +12,7 @@ func testDB(t *testing.T) *DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	migrations := os.DirFS(filepath.Join("..", "..", "."))
+	migrations := MigrationsFS
 	if err := Migrate(context.Background(), d, migrations); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +78,7 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 	defer d.Close()
 
-	migrations := os.DirFS(filepath.Join("..", "..", "."))
+	migrations := MigrationsFS
 
 	if err := Migrate(context.Background(), d, migrations); err != nil {
 		t.Fatalf("first migrate: %v", err)
